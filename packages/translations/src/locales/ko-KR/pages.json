@@ -102,8 +102,8 @@
     "unknownQuality": "",
     "othersStreaming_other": "",
     "vodPlays": "",
-    "vodWatchTime": "",
     "tvSessions": "",
+    "vodWatchTime": "",
     "tvWatchTime": ""
   },
   "yourStats": {
@@ -339,8 +339,8 @@
     "trailer": "",
     "filters": {
       "columns": "",
-      "countries": "",
-      "mediaType": "",
+      "countries": "국가",
+      "mediaType": "미디어 유형",
       "types": "",
       "network": "",
       "remote": "",
@@ -548,7 +548,7 @@
       "quietest": "가장 한산함:",
       "bingeHighlights": "몰아보기 하이라이트",
       "bingeHighlightsDesc": "",
-      "bingeSessions": "몰아보기 세션",
+      "consecutivePlays": "",
       "noData": "아직 시청 데이터가 없습니다",
       "noDataDesc": "콘텐츠가 재생되면 시청 분석이 여기에 표시됩니다. 시청 활동이 생긴 뒤 다시 확인하세요.",
       "failedToLoad": "시청 분석을 불러오지 못했습니다",
@@ -559,7 +559,8 @@
           "show": "",
           "servers": "",
           "consecutive": "",
-          "bingeScore": "",
+          "people": "",
+          "episodesPerViewer": "",
           "maxPerDay": ""
         },
         "empty": {
@@ -1260,6 +1261,7 @@
         "sessionPaused": "스트림이 일시중지되었습니다.",
         "sessionHeldFor": "스트림이 {{duration}} 동안 일시중지됨",
         "sessionHeldForTotal": "스트림이 총 {{duration}} 동안 일시중지됨",
+        "sessionWatched": "",
         "accountInactiveFor": "계정이 {{duration}} 동안 비활성화되었습니다",
         "accountNewDevice": "계정이 새 기기에서 재생함",
         "accountTrustChanged": "계정의 신뢰 점수가 변경됩니다.",
@@ -2026,6 +2028,10 @@
           "label": "설정된 시간(분)보다 오랫동안 스트림이 일시중지되었습니다.",
           "description": "계정은 설정된 일수 동안 아무것도 시청하지 않았습니다.",
           "synonyms": "일시중지, 유휴, 포기, 멈춤, afk"
+        },
+        "sessionWatched": {
+          "description": "",
+          "synonyms": ""
         },
         "accountInactiveFor": {
           "label": "계정이 조용해짐",
@@ -2805,6 +2811,7 @@
         "libraryAll": "모든 라이브러리",
         "yearFromLabel": "연도부터",
         "yearToLabel": "연도까지",
+        "addedLabel": "",
         "sizeGbMinLabel": "최소 크기(GB)",
         "sizeGbMaxLabel": "최대 크기(GB)",
         "sizeChipAtLeast": "≥ {{min}}GB",

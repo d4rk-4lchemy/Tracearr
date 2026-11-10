@@ -509,8 +509,8 @@
     "newVersion": "새 버전",
     "versionAvailable": "{{version}} 사용 가능",
     "beforeUpdating": "업데이트 전 확인 사항",
-    "upstreamAhead": "",
-    "upstreamAheadDescription": ""
+    "upstreamAheadDescription": "",
+    "upstreamAhead": ""
   },
   "whatsNew": {
     "title": "새로운 기능",

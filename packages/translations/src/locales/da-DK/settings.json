@@ -513,8 +513,8 @@
     "newVersion": "Ny Version",
     "versionAvailable": "{{version}} tilgængelig",
     "beforeUpdating": "",
-    "upstreamAhead": "",
-    "upstreamAheadDescription": ""
+    "upstreamAheadDescription": "",
+    "upstreamAhead": ""
   },
   "whatsNew": {
     "title": "",

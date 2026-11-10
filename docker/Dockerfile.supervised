@@ -3,11 +3,16 @@
 # Runs TimescaleDB, Redis, and Tracearr in a single container
 # Ideal for simple deployments, Unraid, Synology, etc.
 
-FROM node:24-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS builder
+# Must match packageManager in package.json.
+# renovate: datasource=npm depName=pnpm versioning=npm
+ARG PNPM_VERSION=12.16.1
+
+FROM node:26-bookworm-slim@sha256:add5c17c14752c54d2f3d519ec46a3815684d41c33f198bcb09fb998f7dcbf68 AS builder
 
 # pnpm's install script is what puts its native binary in place. corepack never runs it,
 # and npm 12 blocks it unless allowed, so both leave pnpm's shebang-less fallback shim instead.
-RUN npm install -g --allow-scripts=pnpm pnpm@12.15.0
+ARG PNPM_VERSION
+RUN npm install -g --allow-scripts=pnpm pnpm@${PNPM_VERSION}
 
 WORKDIR /app
 
@@ -45,7 +50,7 @@ RUN pnpm turbo run build --filter=@tracearr/shared --filter=@tracearr/server --f
 # =============================================================================
 # Same image and digest as the builder, so the runtime Node is the pinned one and every
 # layer below rebuilds when that pin moves instead of staying in the build cache.
-FROM node:24-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205
+FROM node:26-bookworm-slim@sha256:add5c17c14752c54d2f3d519ec46a3815684d41c33f198bcb09fb998f7dcbf68
 
 # Install dependencies
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
@@ -59,7 +64,8 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     tzdata \
     && rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g --allow-scripts=pnpm pnpm@12.15.0
+ARG PNPM_VERSION
+RUN npm install -g --allow-scripts=pnpm pnpm@${PNPM_VERSION}
 
 # Install PostgreSQL 15 + TimescaleDB
 # TimescaleDB 2.28.x is the last line PG15 supports (2.29+ requires PG16+).
@@ -82,7 +88,7 @@ RUN curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmo
 
 # Install Tailscale VPN binary (userspace networking, no root required)
 # renovate: datasource=deb depName=tailscale
-ARG TAILSCALE_VERSION=1.104.2
+ARG TAILSCALE_VERSION=1.104.5
 RUN curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.noarmor.gpg -o /usr/share/keyrings/tailscale-keyring.gpg \
     && echo "deb [signed-by=/usr/share/keyrings/tailscale-keyring.gpg] https://pkgs.tailscale.com/stable/debian bookworm main" > /etc/apt/sources.list.d/tailscale.list \
     && apt-get update \
@@ -92,7 +98,7 @@ RUN curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.noarmor.gpg -o 
 # Install Redis 8 from official Redis repository
 # redis-server depends on the exact same redis-tools version, so both take the pin.
 # renovate: datasource=deb depName=redis-server
-ARG REDIS_VERSION=6:8.10.2-1rl1~bookworm1
+ARG REDIS_VERSION=6:8.10.3-1rl1~bookworm1
 RUN curl -fsSL https://packages.redis.io/gpg | gpg --dearmor -o /usr/share/keyrings/redis-keyring.gpg \
     && chmod 644 /usr/share/keyrings/redis-keyring.gpg \
     && echo "deb [signed-by=/usr/share/keyrings/redis-keyring.gpg] https://packages.redis.io/deb bookworm main" > /etc/apt/sources.list.d/redis.list \

@@ -33,13 +33,13 @@ import { resolveServerIds } from '../../utils/serverFiltering.js';
 import { uuidArraySql } from '../../utils/sqlArrays.js';
 import {
   albumCountSql,
-  buildValueRollupCte,
   pickBestResolution,
   buildCatalogPageQuery,
   buildPosterOrderFragment,
   posterFor,
   rowDecorationsSql,
 } from './catalog.js';
+import { buildValueRollupCte } from './queries.js';
 import {
   fetchEpisodeCounts,
   resolveWatchedStates,
@@ -51,6 +51,7 @@ import {
   libraryFragment,
   seesServerActivity,
   type Scope,
+  serverCacheSegment,
 } from '../../lib/scope.js';
 import { resolveDateRange, type DateRange } from '../stats/utils.js';
 import {
@@ -843,9 +844,7 @@ export const libraryShelvesRoute: FastifyPluginAsync = async (app) => {
       // per shelf.
       const preferredPosterServerId = await getSetting('preferredPosterServerId');
 
-      const serverCacheKey =
-        (resolvedIds !== undefined ? [...resolvedIds].sort().join(',') : 'all') +
-        libraryCacheSegment(request.scope);
+      const serverCacheKey = serverCacheSegment(resolvedIds) + libraryCacheSegment(request.scope);
       const periodCacheKey =
         period === 'custom'
           ? `custom:${dateRange.start?.toISOString() ?? 'none'}:${dateRange.end.toISOString()}`
@@ -867,8 +866,9 @@ export const libraryShelvesRoute: FastifyPluginAsync = async (app) => {
       // lost, and those move to recentlyUpdated, which a v7 payload lacks.
       // v10: recentlyAddedAlbums, mostPlayedArtists and the music meta counts.
       // v11: album rows carry posterVersion, and artist and album art is square.
+      // v12: the day window and viewer counts changed.
       const cacheKey = buildLibraryCacheKey(
-        `${REDIS_KEYS.LIBRARY_SHELVES}:v11`,
+        `${REDIS_KEYS.LIBRARY_SHELVES}:v12`,
         serverCacheKey,
         periodCacheKey,
         undefined,

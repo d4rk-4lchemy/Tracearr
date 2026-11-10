@@ -11,6 +11,7 @@ import { sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
+import { lastDaysWindow, rollupDayWindowSql } from '../../db/sessions/rules.js';
 import { decodeCursor, encodeCursor } from '../../utils/cursor.js';
 import { representativeAccountOrderSql } from '../../utils/representativeAccount.js';
 import {
@@ -19,7 +20,6 @@ import {
   idList,
   runHistoryPage,
   STATS_WINDOWS,
-  windowDayFilter,
   type RouteConfig,
   type StatsWindowKey,
 } from './shared.js';
@@ -80,9 +80,7 @@ async function fetchAccountsByUserId(userIds: string[]): Promise<Map<string, Acc
       username: row.username,
       removed_at: row.removed_at ? new Date(row.removed_at).toISOString() : null,
     };
-    const existing = byUser.get(row.user_id);
-    if (existing) existing.push(block);
-    else byUser.set(row.user_id, [block]);
+    byUser.getOrInsertComputed(row.user_id, () => []).push(block);
   }
 
   return byUser;
@@ -231,7 +229,7 @@ export function registerUsersRoutes(app: FastifyInstance, routeConfig: RouteConf
             COUNT(DISTINCT p.chain_id) FILTER (WHERE p.counted) AS plays,
             COALESCE(SUM(p.watched_ms), 0) AS watch_time_ms
           FROM user_media_plays_daily p
-          WHERE ${scope}${windowDayFilter(sql`p.day`, win.days)}
+          WHERE ${scope}${rollupDayWindowSql(lastDaysWindow(win.days), sql`p.day`)}
         `);
         const row = result.rows[0] as { plays: string | number; watch_time_ms: string | number };
         windows[win.key] = {

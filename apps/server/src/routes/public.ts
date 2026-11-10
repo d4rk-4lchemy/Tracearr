@@ -929,13 +929,23 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
 
     const { timezone, serverId } = query.data;
 
-    const { listenTimeHours: _listenTimeHours, ...stats } = await getDashboardStats({
+    const stats = await getDashboardStats({
       serverIds: serverId ? [serverId] : undefined,
       scope: 'all',
       timezone,
       redis: app.redis,
     });
-    return stats;
+    return {
+      activeStreams: stats.activeStreams,
+      todayPlays: stats.todayPlays,
+      todaySessions: stats.todaySessions,
+      watchTimeHours: stats.watchTimeHours,
+      tvSessions: stats.tvSessions,
+      tvChannels: stats.tvChannels,
+      tvWatchTimeHours: stats.tvWatchTimeHours,
+      alertsLast24h: stats.alertsLast24h,
+      activeUsersToday: stats.activeUsersToday,
+    };
   });
 
   /**

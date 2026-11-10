@@ -102,8 +102,8 @@
     "unknownQuality": "",
     "othersStreaming_other": "",
     "vodPlays": "",
-    "vodWatchTime": "",
     "tvSessions": "",
+    "vodWatchTime": "",
     "tvWatchTime": ""
   },
   "yourStats": {
@@ -548,7 +548,7 @@
       "quietest": "",
       "bingeHighlights": "一気見ハイライト",
       "bingeHighlightsDesc": "",
-      "bingeSessions": "一気見セッション",
+      "consecutivePlays": "",
       "noData": "視聴データはまだありません",
       "noDataDesc": "コンテンツが再生されると、視聴分析がここに表示されます。視聴が行われた後にもう一度確認してください。",
       "failedToLoad": "視聴分析の読み込みに失敗しました",
@@ -559,7 +559,8 @@
           "show": "",
           "servers": "",
           "consecutive": "",
-          "bingeScore": "",
+          "people": "",
+          "episodesPerViewer": "",
           "maxPerDay": ""
         },
         "empty": {
@@ -1260,6 +1261,7 @@
         "sessionPaused": "",
         "sessionHeldFor": "",
         "sessionHeldForTotal": "",
+        "sessionWatched": "",
         "accountInactiveFor": "",
         "accountNewDevice": "",
         "accountTrustChanged": "",
@@ -2024,6 +2026,10 @@
         },
         "sessionHeldFor": {
           "label": "",
+          "description": "",
+          "synonyms": ""
+        },
+        "sessionWatched": {
           "description": "",
           "synonyms": ""
         },
@@ -2805,6 +2811,7 @@
         "libraryAll": "",
         "yearFromLabel": "",
         "yearToLabel": "",
+        "addedLabel": "",
         "sizeGbMinLabel": "",
         "sizeGbMaxLabel": "",
         "sizeChipAtLeast": "",

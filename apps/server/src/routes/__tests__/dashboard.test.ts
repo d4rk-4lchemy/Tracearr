@@ -139,6 +139,8 @@ describe('Dashboard Stats Routes', () => {
         tvChannels: 7,
         tvWatchTimeHours: 6.5,
         listenTimeHours: 1.5,
+        watchTimeMs: 45_000_000,
+        listenTimeMs: 5_400_000,
         alertsLast24h: 3,
         activeUsersToday: 8,
       };
@@ -385,6 +387,7 @@ describe('Dashboard Stats Routes', () => {
       const body = JSON.parse(response.body);
       expect(body.watchTimeHours).toBe(5.6);
       expect(body.tvWatchTimeHours).toBe(0.6);
+      expect(body.watchTimeMs).toBe(20000000);
     });
 
     it('reports listen time apart from watch time and counts music in todayPlays', async () => {

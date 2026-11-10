@@ -509,8 +509,8 @@
     "newVersion": "",
     "versionAvailable": "{{version}} 已可更新",
     "beforeUpdating": "",
-    "upstreamAhead": "",
-    "upstreamAheadDescription": ""
+    "upstreamAheadDescription": "",
+    "upstreamAhead": ""
   },
   "whatsNew": {
     "title": "",

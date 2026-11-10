@@ -577,6 +577,8 @@ export interface SessionSegment {
 export interface SessionWithDetails extends Omit<Session, 'ratingKey' | 'externalSessionId'> {
   user: Pick<ServerUser, 'id' | 'username' | 'thumbUrl'> & { identityName: string | null };
   server: Pick<Server, 'id' | 'name' | 'type'>;
+  /** Start of the play's latest segment; History dates and sorts plays by it. */
+  lastStartedAt?: Date;
   // Number of pause/resume segments in this grouped play (1 = no pauses)
   segmentCount?: number;
   // Individual segment details (up to 20), only present when segmentCount > 1
@@ -741,6 +743,9 @@ export interface DashboardStats {
   tvWatchTimeHours: number;
   /** Music tracks since the start of the day; watchTimeHours covers movies and episodes */
   listenTimeHours: number;
+  /** The same two totals unrounded; the hour fields keep 0.1 h for the mobile app and the public API */
+  watchTimeMs: number;
+  listenTimeMs: number;
   /** Absent for members, who never see violations */
   alertsLast24h?: number;
   /** Absent for members, who get othersActive instead */
@@ -1821,7 +1826,7 @@ export interface RateLimitStatus {
   resetHourIn: number; // seconds until hour window resets
 }
 
-/** The per-device toggles that filter a push after the server has decided to send it. */
+/** The push switches; each reads and writes the server-wide senders, not the device. */
 export type PushEventPreference =
   | 'onViolationDetected'
   | 'onStreamStarted'
@@ -1831,7 +1836,16 @@ export type PushEventPreference =
   | 'onServerDown'
   | 'onServerUp';
 
-/** What stands between an event and this device, apart from the device's own toggles. */
+export interface PushSwitch {
+  /** Something sends this event to Mobile push, and Mobile push is on. */
+  on: boolean;
+  /** Senders the switch does not own: built or customized in the web, or scoped to a server. */
+  others: number;
+  /** How many of `others` are scoped to one server. */
+  scoped: number;
+}
+
+/** What stands between an event and this device. */
 export interface PushDeliveryStatus {
   /** The server holds a push token for this device. */
   tokenRegistered: boolean;
@@ -1841,6 +1855,8 @@ export interface PushDeliveryStatus {
   violationsSubscribed: boolean;
   /** Active automations that send each event to Mobile push. */
   automations: Record<PushEventPreference, number>;
+  /** Absent before the switches read from the senders. */
+  switches?: Record<PushEventPreference, PushSwitch>;
 }
 
 // Extended preferences response including live rate limit status
@@ -2283,43 +2299,6 @@ export interface ContentEngagement {
   lastWatchedAt: Date;
 }
 
-// Top content with engagement metrics (from top_content_by_plays view)
-export interface TopContentEngagement {
-  ratingKey: string;
-  title: string;
-  showTitle: string | null;
-  type: MediaType;
-  thumbPath: string | null;
-  serverId: string | null;
-  year: number | null;
-  totalPlays: number;
-  totalWatchHours: number;
-  uniqueViewers: number;
-  validSessions: number;
-  totalSessions: number;
-  completions: number;
-  rewatches: number;
-  abandonments: number;
-  completionRate: number;
-  abandonmentRate: number;
-}
-
-// Show-level engagement (from top_shows_by_engagement view)
-export interface ShowEngagement {
-  showTitle: string;
-  thumbPath: string | null;
-  serverId: string | null;
-  year: number | null;
-  totalEpisodeViews: number;
-  totalWatchHours: number;
-  uniqueViewers: number;
-  avgEpisodesPerViewer: number;
-  avgCompletionRate: number;
-  bingeScore: number;
-  validSessions: number;
-  totalSessions: number;
-}
-
 // User engagement profile (from user_engagement_profile view)
 export interface UserEngagementProfile {
   serverUserId: string;
@@ -2350,8 +2329,6 @@ export interface EngagementTierBreakdown {
 
 // Main engagement stats response
 export interface EngagementStats {
-  topContent: TopContentEngagement[];
-  topShows: ShowEngagement[];
   engagementBreakdown: EngagementTierBreakdown[];
   userProfiles: UserEngagementProfile[];
   // Summary metrics
@@ -2362,12 +2339,6 @@ export interface EngagementStats {
     sessionInflationPct: number; // How much overcounting would occur with raw sessions
     avgCompletionRate: number;
   };
-}
-
-// Show stats response (for GET /stats/shows)
-export interface ShowStatsResponse {
-  data: ShowEngagement[];
-  total: number;
 }
 
 // =============================================================================
@@ -3325,6 +3296,8 @@ export interface MediaPlatformBreakdownResponse {
 }
 
 export interface SeasonHeatEpisode {
+  mediaId: string;
+  title: string;
   episodeNumber: number | null;
   watchedState: WatchedState;
 }
@@ -3347,9 +3320,8 @@ export interface MediaSeasonHeatResponse {
 // Library Watch Patterns Response (GET /library/patterns)
 
 /**
- * A single binge-show row.
- * When multiple servers are in scope, episodes of the same show across
- * different servers are collapsed into one row (deduped by show matchKey).
+ * A single binge-show row, one per show identity. Plays are counted per person, so one
+ * person's accounts on several servers form one run of episodes.
  */
 export interface BingeShow {
   /** Show identity, a merged alias folded into its winner. */
@@ -3358,12 +3330,19 @@ export interface BingeShow {
   /** Server with the most episodes watched in this binge journey. */
   primaryServerId: string;
   thumbPath: string | null;
+  /** Plays (resume chains) by the people counted in `people`. */
   totalEpisodeWatches: number;
+  /**
+   * Plays of a different episode starting 30 minutes or less after the same person's previous
+   * play of the show ended.
+   */
   consecutiveEpisodes: number;
+  /** consecutiveEpisodes as a share of totalEpisodeWatches. */
   consecutivePct: number;
-  avgGapMinutes: number;
-  bingeScore: number;
+  /** Most distinct episodes one person played in one UTC day. */
   maxEpisodesInOneDay: number;
+  /** Identities with at least the binge threshold of consecutive plays. */
+  people: number;
   /** All server IDs involved in this binge journey. */
   serverIds: string[];
 }
@@ -3398,9 +3377,8 @@ export interface PatternsResponse {
     quietest: string | null;
   };
   summary: {
-    totalWatchSessions: number;
-    avgSessionsPerDay: number;
-    bingeSessionsPct: number;
+    /** Share of episode plays in scope that were consecutive, with no threshold. */
+    consecutivePlaysPct: number;
   };
 }
 
@@ -3476,7 +3454,8 @@ export interface TopShow {
   totalWatchHours: number;
   uniqueViewers: number;
   avgCompletionRate: number;
-  bingeScore: number;
+  /** Distinct episodes with a counted play per person, averaged over the viewers. */
+  episodesPerViewer: number;
 }
 
 export interface TopShowsSummary {

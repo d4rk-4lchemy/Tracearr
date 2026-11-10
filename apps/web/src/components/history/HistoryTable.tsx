@@ -20,6 +20,7 @@ import {
   Clock,
   Clapperboard,
   Subtitles,
+  Layers,
 } from 'lucide-react';
 import { TableCell, TableHead, TableRow } from '@/components/ui/table';
 import { DATA_TABLE_VIEWPORT_MAX_HEIGHT } from '@/components/ui/data-table';
@@ -227,6 +228,7 @@ export const HistoryTableRow = memo(
       });
       const mediaLinks = getMediaLinks(session);
       const progress = getSessionProgress(session);
+      const playedAt = new Date(session.lastStartedAt ?? session.startedAt);
       const colorMap = useServerColorMap();
       const { t } = useTranslation(['common', 'pages']);
       const verbKeys = verbKeysFor(session.mediaType);
@@ -255,13 +257,26 @@ export const HistoryTableRow = memo(
                 <StateIcon state={session.state} />
                 <div>
                   <div className="text-sm font-medium">
-                    {formatDate(new Date(session.startedAt), { dateStyle: 'medium' })}
+                    {formatDate(playedAt, { dateStyle: 'medium' })}
                   </div>
-                  <div className="text-muted-foreground text-xs">
-                    {formatDate(new Date(session.startedAt), {
-                      hour: 'numeric',
-                      minute: '2-digit',
-                    })}
+                  <div className="text-muted-foreground flex items-center gap-1.5 text-xs">
+                    {formatDate(playedAt, { hour: 'numeric', minute: '2-digit' })}
+                    {session.segmentCount && session.segmentCount > 1 ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span
+                            className="flex items-center gap-0.5"
+                            aria-label={t('count.segment', { count: session.segmentCount })}
+                          >
+                            <Layers className="h-3 w-3" />
+                            {session.segmentCount}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          {t('count.segment', { count: session.segmentCount })}
+                        </TooltipContent>
+                      </Tooltip>
+                    ) : null}
                   </div>
                 </div>
               </div>

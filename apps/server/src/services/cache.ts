@@ -240,7 +240,7 @@ export function createCacheService(redis: Redis): CacheService {
     },
 
     async getActiveSessionIds(): Promise<string[]> {
-      return await redis.smembers(REDIS_KEYS.ACTIVE_SESSION_IDS);
+      return redis.smembers(REDIS_KEYS.ACTIVE_SESSION_IDS);
     },
 
     async getAllActiveSessions(): Promise<ActiveSession[]> {

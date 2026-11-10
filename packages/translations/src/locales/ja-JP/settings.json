@@ -509,8 +509,8 @@
     "newVersion": "新しいバージョン",
     "versionAvailable": "{{version}} が利用可能です",
     "beforeUpdating": "",
-    "upstreamAhead": "",
-    "upstreamAheadDescription": ""
+    "upstreamAheadDescription": "",
+    "upstreamAhead": ""
   },
   "whatsNew": {
     "title": "",

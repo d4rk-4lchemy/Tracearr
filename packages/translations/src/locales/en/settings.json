@@ -181,7 +181,7 @@
     "publicUrlHint": "The address members use to open this server. Newsletter links use it.",
     "apiKeyHelpJellyfin": "Find this in Jellyfin Dashboard → API Keys",
     "apiKeyHelpEmby": "Find this in Emby Server → API Keys",
-    "apiKeyKeepCurrent": "Leave empty to keep the current key",
+    "apiKeyKeepCurrent": "Leave blank to keep the current key",
     "plexServerPlaceholder": "My Plex Server",
     "plexServerUrlPlaceholder": "http://192.168.1.100:32400",
     "updateHint": "Or click Update below to save only the name change.",
@@ -513,8 +513,8 @@
     "newVersion": "New Version",
     "versionAvailable": "{{version}} available",
     "beforeUpdating": "Before you update",
-    "upstreamAhead": "Upstream is newer",
-    "upstreamAheadDescription": "A newer official Tracearr release is available, but this fork has not published a matching release yet."
+    "upstreamAheadDescription": "A newer official Tracearr release is available, but this fork has not published a matching release yet.",
+    "upstreamAhead": "Upstream is newer"
   },
   "whatsNew": {
     "title": "What's new",

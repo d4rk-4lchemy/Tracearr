@@ -164,9 +164,9 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
     const lastSession = sessionData[sessionData.length - 1];
     const lastRow = rows[rows.length - 1];
     const nextCursor =
-      hasMore && lastSession?.startedAt
+      hasMore && lastSession
         ? [
-            `${new Date(lastSession.startedAt).getTime()}`,
+            `${new Date(lastSession.lastStartedAt).getTime()}`,
             lastSession.id,
             ...(orderBy === 'startedAt'
               ? []
@@ -271,7 +271,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
     const cacheService = getCacheService();
     const filterScopeHash = buildCacheFingerprint({
       userId: authUser.userId,
-      resolvedIds: resolvedIds ? [...resolvedIds].sort() : null,
+      resolvedIds: resolvedIds ? resolvedIds.toSorted() : null,
       startDate,
       endDate,
       includeAllCountries,

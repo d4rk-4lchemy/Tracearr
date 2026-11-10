@@ -21,6 +21,7 @@ import { useServer } from '@/hooks/useServer';
 import { useServerColorMap } from '@/hooks/useServerColorMap';
 import { useSocket } from '@/hooks/useSocket';
 import { pickServerColor } from '@tracearr/shared';
+import { formatWatchTime } from '@/lib/dateFormat';
 import { cn } from '@/lib/utils';
 
 function ServerDashboard({ actions }: { actions?: ReactNode }) {
@@ -202,10 +203,10 @@ function ServerDashboard({ actions }: { actions?: ReactNode }) {
           <StatCard
             icon={Clock}
             label={t('dashboard.vodWatchTime')}
-            value={`${stats?.watchTimeHours ?? 0}h`}
+            value={formatWatchTime(stats?.watchTimeMs ?? 0)}
             subValue={
-              stats?.listenTimeHours
-                ? `${t('common:labels.listenTime')} ${stats.listenTimeHours}h`
+              stats?.listenTimeMs
+                ? `${t('common:labels.listenTime')} ${formatWatchTime(stats.listenTimeMs)}`
                 : undefined
             }
             isLoading={statsLoading}

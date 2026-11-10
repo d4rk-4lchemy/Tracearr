@@ -1,0 +1,54 @@
+{
+  "version": "3.1.4",
+  "date": "2026-11-05",
+  "changes": [
+    {
+      "type": "new",
+      "text": "automations can fire when a stream passes the watched threshold set in Settings"
+    },
+    {
+      "type": "new",
+      "text": "Browse filters by added date; clicking Movies or Episodes on the library growth chart opens it for the picked range"
+    },
+    {
+      "type": "improved",
+      "text": "each episode in a show's season strip names itself on hover and opens its own page"
+    },
+    {
+      "type": "improved",
+      "text": "the dashboard shows today's watch time in hours and minutes"
+    },
+    {
+      "type": "improved",
+      "text": "hovering the time left on a Now Playing card shows when the stream ends"
+    },
+    {
+      "type": "note",
+      "text": "Tracearr now runs on Node.js 26; servers behind an HTTPS reverse proxy are reached over HTTP/2 when the proxy offers it"
+    },
+    {
+      "type": "fix",
+      "text": "a few seconds of a title no longer counts as a viewer, and a play the server marked watched always does"
+    },
+    {
+      "type": "improved",
+      "text": "binge highlights rank shows by episodes watched back to back per person; Top shows lists episodes per viewer"
+    },
+    {
+      "type": "fix",
+      "text": "the Overview shelves now cover exactly the days picked; a 30-day range no longer includes a 31st day"
+    },
+    {
+      "type": "improved",
+      "text": "the mobile app's notification switches set what the server sends to Mobile push, so they apply to every paired device"
+    },
+    {
+      "type": "fix",
+      "text": "a user that fails to save during a server sync shows up in the sync's errors instead of failing the sync"
+    },
+    {
+      "type": "fix",
+      "text": "the import file drop zone opens the file picker from the keyboard"
+    }
+  ]
+}
