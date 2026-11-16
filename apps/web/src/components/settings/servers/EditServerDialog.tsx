@@ -259,7 +259,9 @@ export function EditServerDialog({
                   id="edit-url"
                   value={manualUrl}
                   onChange={(e) => setManualUrl(e.target.value)}
-                  placeholder="http://192.168.1.100:8096"
+                  placeholder={
+                    isDispatcharr ? 'http://192.168.1.100:9191' : 'http://192.168.1.100:8096'
+                  }
                   disabled={locked}
                 />
                 {locked && <FieldDescription>{t('servers.resumeFirst')}</FieldDescription>}
