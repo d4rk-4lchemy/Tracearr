@@ -9,6 +9,7 @@ import {
   cn,
   formatLocationCompact,
   getBufferedPercent,
+  getMediaDisplay,
   getDeviceDisplayName,
   getMediaLinks,
 } from '@/lib/utils';
@@ -37,7 +38,7 @@ interface NowPlayingCardProps {
 }
 
 function getCardMediaDisplay(session: ActiveSession): { title: string; subtitle: string | null } {
-  if (session.mediaType === 'live') {
+  if (session.mediaType === 'live' && session.server.type !== 'tofa') {
     if (session.server.type === 'plex') return { title: session.mediaTitle, subtitle: null };
     const channelTitle = session.channelTitle?.trim() || session.mediaTitle;
     const programTitle = session.mediaTitle?.trim() || null;
@@ -45,31 +46,7 @@ function getCardMediaDisplay(session: ActiveSession): { title: string; subtitle:
     return { title: channelTitle, subtitle };
   }
 
-  if (session.mediaType === 'episode' && session.grandparentTitle) {
-    const episodeInfo =
-      session.seasonNumber && session.episodeNumber
-        ? `S${session.seasonNumber.toString().padStart(2, '0')} E${session.episodeNumber.toString().padStart(2, '0')}`
-        : '';
-    return {
-      title: session.grandparentTitle,
-      subtitle: episodeInfo ? `${episodeInfo} · ${session.mediaTitle}` : session.mediaTitle,
-    };
-  }
-
-  if (session.mediaType === 'track') {
-    const parts: string[] = [];
-    if (session.artistName) parts.push(session.artistName);
-    if (session.albumName) parts.push(session.albumName);
-    return {
-      title: session.mediaTitle,
-      subtitle: parts.length > 0 ? parts.join(' · ') : null,
-    };
-  }
-
-  return {
-    title: session.mediaTitle,
-    subtitle: session.year ? `${session.year}` : null,
-  };
+  return getMediaDisplay(session);
 }
 
 // Get device icon based on platform/device info
@@ -78,12 +55,6 @@ function DeviceIcon({ session, className }: { session: ActiveSession; className?
   const device = session.device?.toLowerCase() ?? '';
   const product = session.product?.toLowerCase() ?? '';
 
-  if (platform.includes('ios') || device.includes('iphone') || platform.includes('android')) {
-    return <Smartphone className={className} />;
-  }
-  if (device.includes('ipad') || platform.includes('tablet')) {
-    return <Tablet className={className} />;
-  }
   if (
     platform.includes('tv') ||
     device.includes('tv') ||
@@ -91,10 +62,15 @@ function DeviceIcon({ session, className }: { session: ActiveSession; className?
     device.includes('roku') ||
     device.includes('firestick') ||
     device.includes('chromecast') ||
-    device.includes('apple tv') ||
     device.includes('shield')
   ) {
     return <Tv className={className} />;
+  }
+  if (device.includes('ipad') || platform.includes('tablet')) {
+    return <Tablet className={className} />;
+  }
+  if (platform.includes('ios') || device.includes('iphone') || platform.includes('android')) {
+    return <Smartphone className={className} />;
   }
   return <Monitor className={className} />;
 }
@@ -121,12 +97,12 @@ export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
   const { title, subtitle: mediaSubtitle } = getCardMediaDisplay(session);
   const mediaLinks = getMediaLinks(session);
   const { user } = useAuth();
-  const { t } = useTranslation(['common', 'pages']);
+  const { t } = useTranslation(['common', 'pages', 'settings']);
   const subtitle =
     session.mediaType === 'trailer'
       ? [t('pages:automations.options.trailer'), mediaSubtitle].filter(Boolean).join(' · ')
       : mediaSubtitle;
-  const { isMultiServer } = useServer();
+  const { isMultiServer, servers } = useServer();
   const [showTerminateDialog, setShowTerminateDialog] = useState(false);
   // Read when the tooltip opens: while playing, now plus what's left stays put.
   const [endsAt, setEndsAt] = useState<number | null>(null);
@@ -134,6 +110,8 @@ export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
   // Only admin/owner can terminate sessions, and session must support termination
   // (some Plex clients like Plexamp don't provide the required Session.id)
   const canTerminate = (user?.role === 'admin' || user?.role === 'owner') && session.canTerminate;
+  const stopRefused =
+    servers.find((server) => server.id === session.serverId)?.canStopStreams === false;
 
   // Use estimated progress for smooth updates between SSE/poll events
   const { estimatedProgressMs, progressPercent } = useEstimatedProgress(session);
@@ -163,6 +141,7 @@ export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
   const avatarUrl = getAvatarUrl(session.serverId, session.user.thumbUrl, 28) ?? undefined;
 
   const deviceName = getDeviceDisplayName(session);
+  const displayName = session.user.identityName ?? session.user.username;
   const isPaused = session.state === 'paused';
   const isDispatcharrLive =
     !isDispatcharrCatchup && session.server.type === 'dispatcharr' && session.mediaType === 'live';
@@ -187,6 +166,7 @@ export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
     session.dispatcharrCatchupEpgStartAt ?? null
   );
   const catchupEndLabel = formatDispatcharrCatchupClock(session.dispatcharrCatchupEpgEndAt ?? null);
+  const isLive = session.mediaType === 'live';
 
   return (
     <>
@@ -252,16 +232,13 @@ export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
             <div className="flex items-start justify-between gap-2">
               <div className="flex min-w-0 items-center gap-2">
                 <Avatar className="border-background h-7 w-7 shrink-0 border-2 shadow">
-                  <AvatarImage src={avatarUrl} alt={session.user.username} />
+                  <AvatarImage src={avatarUrl} alt={displayName} />
                   <AvatarFallback className="text-xs">
-                    {session.user.username.slice(0, 2).toUpperCase()}
+                    {displayName.slice(0, 2).toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
-                <span
-                  className="truncate text-sm font-medium"
-                  title={session.user.identityName ?? session.user.username}
-                >
-                  {session.user.identityName ?? session.user.username}
+                <span className="truncate text-sm font-medium" title={displayName}>
+                  {displayName}
                 </span>
               </div>
 
@@ -313,20 +290,33 @@ export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
                 </div>
 
                 {/* Terminate button - admin/owner only */}
-                {canTerminate && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive h-6 w-6"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowTerminateDialog(true);
-                    }}
-                    title={t('pages:terminateStream.title')}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                )}
+                {canTerminate &&
+                  (stopRefused ? (
+                    <span title={t('settings:servers.cannotStopStreams')}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-muted-foreground pointer-events-none h-6 w-6"
+                        aria-label={t('settings:servers.cannotStopStreams')}
+                        disabled
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </span>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive h-6 w-6"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowTerminateDialog(true);
+                      }}
+                      title={t('pages:terminateStream.title')}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  ))}
               </div>
             </div>
 
@@ -345,13 +335,17 @@ export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
             {/* Bottom: Progress */}
             <div className="mt-3 space-y-1">
               <Progress
-                value={progressPercent}
+                value={isLive && !isDispatcharrCatchup ? 100 : progressPercent}
                 buffered={getBufferedPercent(session)}
                 className="h-1.5"
               />
               <div className="text-muted-foreground flex justify-between gap-2 text-[10px]">
                 <span className="shrink-0">
-                  {isDispatcharrCatchup ? catchupStartLabel : formatDuration(estimatedProgressMs)}
+                  {isDispatcharrCatchup
+                    ? catchupStartLabel
+                    : isLive && session.server.type !== 'dispatcharr'
+                      ? t('media.liveTV')
+                      : formatDuration(estimatedProgressMs)}
                 </span>
                 <span
                   className="min-w-0 truncate"
@@ -367,7 +361,7 @@ export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
                     <span className="font-medium text-yellow-500">{dispatcharrStateLabel}</span>
                   ) : dispatcharrLiveLabel ? (
                     dispatcharrLiveLabel
-                  ) : remaining ? (
+                  ) : isLive && session.server.type !== 'dispatcharr' ? null : remaining ? (
                     <TooltipProvider delayDuration={100}>
                       <Tooltip
                         onOpenChange={(open) => {
@@ -422,7 +416,7 @@ export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
         onOpenChange={setShowTerminateDialog}
         sessionId={session.id}
         mediaTitle={title}
-        username={session.user.username}
+        name={displayName}
       />
     </>
   );

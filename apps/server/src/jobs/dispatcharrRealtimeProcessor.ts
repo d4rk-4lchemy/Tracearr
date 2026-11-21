@@ -9,7 +9,7 @@ import { sseManager } from '../services/sseManager.js';
 import { getActiveAutomations } from './poller/database.js';
 import { processServerSessions } from './poller/processor.js';
 import { processPollResults } from './poller/sessionLifecycle.js';
-import { buildCompositeKey } from './poller/stateTracker.js';
+import { buildCompositeKey } from './poller/sessionIdentity.js';
 
 let cacheService: CacheService | null = null;
 let pubSubService: PubSubService | null = null;

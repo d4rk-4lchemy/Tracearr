@@ -1,7 +1,7 @@
 /**
  * Media Server Client Module
  *
- * Provides a unified interface for Plex and Jellyfin media server integrations.
+ * Provides a unified interface for Plex, Jellyfin, Emby and tofa media server integrations.
  * Use the factory function to create clients based on server type.
  *
  * @example
@@ -17,16 +17,13 @@
  * const users = await client.getUsers();
  */
 
+import { assertNever, type JellyfinEmbyServerType, type ServerType } from '@tracearr/shared';
 import { PlexClient } from './plex/client.js';
 import { JellyfinClient } from './jellyfin/client.js';
 import { EmbyClient } from './emby/client.js';
 import { DispatcharrClient } from './dispatcharr/client.js';
-import type {
-  IMediaServerClient,
-  IMediaServerClientWithHistory,
-  MediaServerConfig,
-  CreateClientOptions,
-} from './types.js';
+import type { IMediaServerClient, MediaServerConfig, CreateClientOptions } from './types.js';
+import { TofaClient } from './tofa/client.js';
 
 // ============================================================================
 // Factory Function
@@ -67,21 +64,73 @@ export function createMediaServerClient(options: CreateClientOptions): IMediaSer
       return new EmbyClient(config);
     case 'dispatcharr':
       return new DispatcharrClient(config);
+    case 'tofa':
+      return new TofaClient(config);
     default:
-      throw new Error(`Unknown media server type: ${options.type as string}`);
+      return assertNever(options.type);
   }
 }
 
-/**
- * Type guard to check if a client supports watch history
- */
-export function supportsWatchHistory(
-  client: IMediaServerClient
-): client is IMediaServerClientWithHistory {
-  return (
-    'getWatchHistory' in client &&
-    typeof (client as IMediaServerClientWithHistory).getWatchHistory === 'function'
-  );
+export function createJellyfinEmbyClient(
+  type: JellyfinEmbyServerType,
+  config: MediaServerConfig
+): JellyfinClient | EmbyClient {
+  switch (type) {
+    case 'jellyfin':
+      return new JellyfinClient(config);
+    case 'emby':
+      return new EmbyClient(config);
+    default:
+      return assertNever(type);
+  }
+}
+
+export function isJellyfinEmby(type: ServerType): type is JellyfinEmbyServerType {
+  switch (type) {
+    case 'plex':
+    case 'dispatcharr':
+      return false;
+    case 'jellyfin':
+      return true;
+    case 'emby':
+      return true;
+    case 'tofa':
+      return false;
+    default:
+      return assertNever(type);
+  }
+}
+
+export function verifyServerAdmin(type: ServerType, token: string, url: string) {
+  switch (type) {
+    case 'plex':
+      return PlexClient.verifyServerAdmin(token, url);
+    case 'jellyfin':
+      return JellyfinClient.verifyServerAdmin(token, url);
+    case 'emby':
+      return EmbyClient.verifyServerAdmin(token, url);
+    case 'dispatcharr':
+      return DispatcharrClient.verifyServerAdmin(token, url);
+    case 'tofa':
+      return TofaClient.verifyServerAdmin(token, url);
+    default:
+      return assertNever(type);
+  }
+}
+
+export function logoutUserToken(
+  type: JellyfinEmbyServerType,
+  serverUrl: string,
+  token: string
+): Promise<void> {
+  switch (type) {
+    case 'jellyfin':
+      return JellyfinClient.logoutUserToken(serverUrl, token);
+    case 'emby':
+      return EmbyClient.logoutUserToken(serverUrl, token);
+    default:
+      return assertNever(type);
+  }
 }
 
 // ============================================================================
@@ -106,6 +155,7 @@ export { PlexClient } from './plex/client.js';
 export { JellyfinClient } from './jellyfin/client.js';
 export { EmbyClient } from './emby/client.js';
 export { DispatcharrClient } from './dispatcharr/client.js';
+export { TofaClient } from './tofa/client.js';
 
 // Plex-specific types
 export type { PlexServerResource, PlexServerConnection } from './plex/parser.js';

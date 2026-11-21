@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
-import { AlertTriangle, ExternalLink } from 'lucide-react';
-import type { Server, ServerConnectionStatus } from '@tracearr/shared';
+import { AlertTriangle } from 'lucide-react';
+import type { JellyfinEmbyServerType, ServerConnectionStatus } from '@tracearr/shared';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { CopyButton } from '@/components/ui/copy-button';
@@ -20,24 +20,48 @@ const ISSUE_KEYS = {
   malfunctioned: 'servers.realtimeDialog.issueMalfunctioned',
 } as const;
 
+const PLUGIN_GUIDES = {
+  jellyfin: {
+    description: 'servers.realtimeDialog.jellyfinDescription',
+    updateDescription: 'servers.realtimeDialog.jellyfinUpdateDescription',
+    steps: [
+      'servers.realtimeDialog.jellyfinStep1',
+      'servers.realtimeDialog.jellyfinStep2',
+      'servers.realtimeDialog.jellyfinStep3',
+      'servers.realtimeDialog.jellyfinStep4',
+    ],
+    repoUrl: 'servers.realtimeDialog.jellyfinRepoUrl',
+  },
+  emby: {
+    description: 'servers.realtimeDialog.embyDescription',
+    updateDescription: 'servers.realtimeDialog.embyUpdateDescription',
+    steps: [
+      'servers.realtimeDialog.embyStep1',
+      'servers.realtimeDialog.embyStep2',
+      'servers.realtimeDialog.embyStep3',
+    ],
+    repoUrl: null,
+  },
+} as const;
+
 const BOLD = { strong: <strong /> };
 
 export function RealtimeSetupDialog({
-  server,
+  serverType,
   open,
   onClose,
   mode = 'setup',
   connectionStatus,
 }: {
-  server: Server;
+  serverType: JellyfinEmbyServerType;
   open: boolean;
   onClose: () => void;
   mode?: 'setup' | 'update';
   connectionStatus?: ServerConnectionStatus;
 }) {
   const { t } = useTranslation(['settings', 'common']);
-  const repoUrl = t('servers.realtimeDialog.jellyfinRepoUrl');
-  const isDispatcharr = server.type === 'dispatcharr';
+  const guide = PLUGIN_GUIDES[serverType];
+  const repoUrl = guide.repoUrl && t(guide.repoUrl);
   const repoUrlRef = useRef<HTMLElement>(null);
   const issueKey =
     connectionStatus?.pluginIssue && connectionStatus.pluginIssue in ISSUE_KEYS
@@ -49,24 +73,12 @@ export function RealtimeSetupDialog({
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            {isDispatcharr
-              ? mode === 'update'
-                ? 'Update the Tracearr SSE Metrics plugin'
-                : 'Enable Tracearr SSE Metrics'
-              : mode === 'update'
-                ? t('servers.realtimeDialog.updateTitle')
-                : t('servers.realtimeDialog.title')}
+            {mode === 'update'
+              ? t('servers.realtimeDialog.updateTitle')
+              : t('servers.realtimeDialog.title')}
           </DialogTitle>
           <DialogDescription>
-            {isDispatcharr
-              ? 'Install the Tracearr SSE Metrics plugin to provide server metrics and plugin version information to Tracearr.'
-              : server.type === 'jellyfin'
-                ? mode === 'update'
-                  ? t('servers.realtimeDialog.jellyfinUpdateDescription')
-                  : t('servers.realtimeDialog.jellyfinDescription')
-                : mode === 'update'
-                  ? t('servers.realtimeDialog.embyUpdateDescription')
-                  : t('servers.realtimeDialog.embyDescription')}
+            {t(mode === 'update' ? guide.updateDescription : guide.description)}
           </DialogDescription>
         </DialogHeader>
 
@@ -84,76 +96,37 @@ export function RealtimeSetupDialog({
               </AlertDescription>
             </Alert>
           )}
-          {isDispatcharr ? (
-            <>
-              <p>
-                Edit this server and select Username + Password authentication to enable WebSocket
-                real-time updates. For older token-based configurations, enter your credentials
-                again. API key mode uses REST polling.
-              </p>
-              <ol className="list-decimal space-y-2 pl-4">
-                <li>Download the latest Tracearr SSE Metrics release ZIP.</li>
-                <li>Import it from Dispatcharr&apos;s My Plugins screen.</li>
-                <li>Refresh or restart the plugin so Tracearr can detect the new version.</li>
-              </ol>
-              <a
-                href="https://github.com/d4rk-4lchemy/Tracearr-SSE-Metrics/releases/latest"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary inline-flex items-center gap-1 hover:underline"
-              >
-                {t('servers.realtimeDialog.openReleases')}
-                <ExternalLink className="h-3 w-3" />
-              </a>
-            </>
-          ) : server.type === 'jellyfin' ? (
-            <>
-              <ol className="list-decimal space-y-2 pl-4">
-                <li>{t('servers.realtimeDialog.jellyfinStep1')}</li>
-                <li>
-                  <Trans t={t} i18nKey="servers.realtimeDialog.jellyfinStep2" components={BOLD} />
-                </li>
-                <li>
-                  <Trans t={t} i18nKey="servers.realtimeDialog.jellyfinStep3" components={BOLD} />
-                </li>
-                <li>{t('servers.realtimeDialog.jellyfinStep4')}</li>
-              </ol>
-              <div className="space-y-1">
-                <p className="text-foreground text-xs font-medium">
-                  {t('servers.realtimeDialog.repositoryUrl')}
-                </p>
-                <div className="flex items-center gap-2">
-                  <code
-                    ref={repoUrlRef}
-                    className="bg-muted flex-1 truncate rounded px-2 py-1 text-xs"
-                  >
-                    {repoUrl}
-                  </code>
-                  <CopyButton
-                    value={repoUrl}
-                    label={t('servers.realtimeDialog.copyUrl')}
-                    selectTarget={() => repoUrlRef.current}
-                    variant="ghost"
-                    size="icon-sm"
-                    className="shrink-0"
-                  />
-                </div>
-              </div>
-            </>
-          ) : (
-            <ol className="list-decimal space-y-2 pl-4">
-              <li>{t('servers.realtimeDialog.embyStep1')}</li>
-              <li>
-                <Trans t={t} i18nKey="servers.realtimeDialog.embyStep2" components={BOLD} />
+          <ol className="list-decimal space-y-2 pl-4">
+            {guide.steps.map((step) => (
+              <li key={step}>
+                <Trans t={t} i18nKey={step} components={BOLD} />
               </li>
-              <li>{t('servers.realtimeDialog.embyStep3')}</li>
-            </ol>
+            ))}
+          </ol>
+          {repoUrl && (
+            <div className="space-y-1">
+              <p className="text-foreground text-xs font-medium">
+                {t('servers.realtimeDialog.repositoryUrl')}
+              </p>
+              <div className="flex items-center gap-2">
+                <code
+                  ref={repoUrlRef}
+                  className="bg-muted flex-1 truncate rounded px-2 py-1 text-xs"
+                >
+                  {repoUrl}
+                </code>
+                <CopyButton
+                  value={repoUrl}
+                  label={t('servers.realtimeDialog.copyUrl')}
+                  selectTarget={() => repoUrlRef.current}
+                  variant="ghost"
+                  size="icon-sm"
+                  className="shrink-0"
+                />
+              </div>
+            </div>
           )}
-          <p className="text-xs">
-            {isDispatcharr
-              ? 'Tracearr detects the plugin version automatically after the Dispatcharr WebSocket reconnects.'
-              : t('servers.realtimeDialog.autoDetectNote')}
-          </p>
+          <p className="text-xs">{t('servers.realtimeDialog.autoDetectNote')}</p>
         </div>
 
         <DialogFooter>

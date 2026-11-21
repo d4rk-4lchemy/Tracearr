@@ -17,6 +17,8 @@ import type {
   ActiveSession,
   NotificationEventType,
   NotificationPriority,
+  ServerType,
+  JellyfinEmbyServerType,
 } from '@tracearr/shared';
 import type { MediaQuality } from '../automations/types.js';
 import type {
@@ -59,9 +61,12 @@ export interface SessionContext {
 export interface ServerContext {
   type: 'server_down' | 'server_up';
   serverName: string;
-  serverType?: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr';
+  serverType?: ServerType;
 }
 
+/**
+ * Context provided with plugin update notifications
+ */
 /**
  * Context provided with plugin update notifications
  */
@@ -69,20 +74,7 @@ export interface PluginUpdateContext {
   type: 'plugin_update_available';
   serverId: string;
   serverName: string;
-  serverType: string;
-  installedVersion: string | null;
-  latestVersion: string;
-  downloadUrl: string;
-}
-
-/**
- * Context provided with plugin update notifications
- */
-export interface PluginUpdateContext {
-  type: 'plugin_update_available';
-  serverId: string;
-  serverName: string;
-  serverType: string;
+  serverType: JellyfinEmbyServerType | 'dispatcharr';
   installedVersion: string | null;
   latestVersion: string;
   downloadUrl: string;
@@ -237,10 +229,7 @@ export const PayloadBuilders = {
     };
   },
 
-  fromServerDown(
-    serverName: string,
-    serverType?: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr'
-  ): NotificationPayload {
+  fromServerDown(serverName: string, serverType?: ServerType): NotificationPayload {
     return {
       event: 'server_down',
       title: 'Server Offline',
@@ -251,10 +240,7 @@ export const PayloadBuilders = {
     };
   },
 
-  fromServerUp(
-    serverName: string,
-    serverType?: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr'
-  ): NotificationPayload {
+  fromServerUp(serverName: string, serverType?: ServerType): NotificationPayload {
     return {
       event: 'server_up',
       title: 'Server Online',
@@ -364,7 +350,7 @@ export const PayloadBuilders = {
   fromPluginUpdate(
     serverId: string,
     serverName: string,
-    serverType: string,
+    serverType: JellyfinEmbyServerType | 'dispatcharr',
     installedVersion: string | null,
     latestVersion: string,
     downloadUrl: string

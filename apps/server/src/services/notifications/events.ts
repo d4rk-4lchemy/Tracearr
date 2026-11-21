@@ -1,10 +1,11 @@
 import type {
   ActiveSession,
   NotificationEventType,
-  ServerType,
   NewsletterSendTrigger,
   NotificationPriority,
   ViolationWithDetails,
+  ServerType,
+  JellyfinEmbyServerType,
 } from '@tracearr/shared';
 import type { MediaQuality } from '../automations/types.js';
 
@@ -114,7 +115,7 @@ export type NotificationEvent =
       payload: {
         serverId: string;
         serverName: string;
-        serverType: string;
+        serverType: JellyfinEmbyServerType | 'dispatcharr';
         installedVersion: string | null;
         latestVersion: string;
         downloadUrl: string;

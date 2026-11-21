@@ -1,5 +1,6 @@
 import { fetchJson } from '../../../utils/http.js';
 import { createHash } from 'node:crypto';
+import { NOT_NEEDED } from '../types.js';
 import type {
   IMediaServerClient,
   MediaLibrary,
@@ -509,6 +510,50 @@ export class DispatcharrClient implements IMediaServerClient {
 
   async getLibraryItems(): Promise<{ items: MediaLibraryItem[]; totalCount: number }> {
     return { items: [], totalCount: 0 };
+  }
+
+  async getServerIdentity(): Promise<null> {
+    return null;
+  }
+  async getSoftwareVersion(): Promise<null> {
+    return null;
+  }
+  async describeDownloadSource(): Promise<never> {
+    throw new Error('Dispatcharr has no download catalog');
+  }
+  async findExistingRatingKeys(): Promise<Set<string>> {
+    return new Set();
+  }
+  async getLibraryLeaves(): Promise<{ items: MediaLibraryItem[]; totalCount: number }> {
+    return { items: [], totalCount: 0 };
+  }
+  async getLibraryItemsSince(): Promise<{
+    items: MediaLibraryItem[];
+    totalCount: number;
+    feed: typeof NOT_NEEDED;
+  }> {
+    return { items: [] as MediaLibraryItem[], totalCount: 0, feed: NOT_NEEDED };
+  }
+  async getLibraryLeavesSince(): Promise<typeof NOT_NEEDED> {
+    return NOT_NEEDED;
+  }
+  async getLibraryRevision(): Promise<typeof NOT_NEEDED> {
+    return NOT_NEEDED;
+  }
+  async getLibrarySeasons(): Promise<typeof NOT_NEEDED> {
+    return NOT_NEEDED;
+  }
+  async getLibrarySeasonsSince(): Promise<typeof NOT_NEEDED> {
+    return NOT_NEEDED;
+  }
+  async getLibraryAlbums(): Promise<typeof NOT_NEEDED> {
+    return NOT_NEEDED;
+  }
+  async getLibraryAlbumsSince(): Promise<typeof NOT_NEEDED> {
+    return NOT_NEEDED;
+  }
+  async checkFilesExist(): Promise<typeof NOT_NEEDED> {
+    return NOT_NEEDED;
   }
 
   static async verifyServerAdmin(

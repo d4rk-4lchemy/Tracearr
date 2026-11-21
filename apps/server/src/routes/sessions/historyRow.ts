@@ -1,3 +1,5 @@
+import type { ServerType } from '@tracearr/shared';
+
 export interface HistoryRow {
   id: string;
   started_at: Date;
@@ -52,6 +54,7 @@ export interface HistoryRow {
   geo_asn_number: number | null;
   geo_asn_organization: string | null;
   is_local: boolean;
+  profile_name: string | null;
   player_name: string | null;
   dispatcharr_device_id?: string | null;
   device_id: string | null;
@@ -95,7 +98,7 @@ export function mapHistoryRow(row: HistoryRow) {
     server: {
       id: row.server_id,
       name: row.server_name,
-      type: row.server_type as 'plex' | 'jellyfin' | 'emby' | 'dispatcharr',
+      type: row.server_type as ServerType,
     },
     sessionKey: row.session_key,
     state: row.state,
@@ -140,6 +143,7 @@ export function mapHistoryRow(row: HistoryRow) {
     geoAsnNumber: row.geo_asn_number,
     geoAsnOrganization: row.geo_asn_organization,
     isLocal: row.is_local === true,
+    profileName: row.profile_name,
     playerName: row.player_name,
     dispatcharrDeviceId: row.dispatcharr_device_id,
     deviceId: row.device_id,
