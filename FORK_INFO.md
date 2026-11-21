@@ -1,5 +1,33 @@
 # Tracearr Fork Information
 
+## November 21, 2026 — PR #22 main reconciliation
+
+GitHub PR #22 (`2045ca022`) is approved and merged into GitHub main as
+`d79f1357c`; local main and origin/main are fast-forwarded to that commit.
+Develop retains the 3.2 form split: the Dispatcharr URL example is ported to
+AddServerFields and the dedicated Dispatcharr edit input as
+`http://192.168.1.100:9191`. It remains only a placeholder; arbitrary entered
+URLs and saved values are preserved. Jellyfin/Emby/Plex examples are unchanged.
+
+The reconciliation also fixes a 3.2 regression: holdsApiKey intentionally
+excludes Dispatcharr, so using form.keyFields alone to render Connect hid the
+button in both Add Server and first-run setup. Both surfaces now include the
+Dispatcharr credentials/token form. Regression coverage verifies the button
+in both auth modes and first-run credentials connecting to a different HTTPS
+URL with a base path, alongside placeholder and saved-value assertions.
+The develop merge commit stays local at the user's request.
+
+Scoped validation passes with verified Node 26.13.1 / pnpm 12.20.0: all
+2,747 web tests, 59 focused settings/setup tests, full typecheck, lint and
+Prettier for the seven changed source/test files. Heavy jobs run sequentially
+on the 8 GB host with a 4 GB heap, two Vitest workers and Turbo concurrency
+one. Lint retains the same 190 normalized warnings and zero errors. Both
+missing-button cases are reproduced before the fix. Logs:
+`.tmp/pr22-<job>-20261121.log`; results: `.tmp/pr22-results.json`.
+Server test groups, coverage, builds, Docker jobs and live-provider manual
+smoke are not rerun for this frontend reconciliation; the preceding full-merge
+validation remains recorded separately.
+
 ## November 21, 2026 — Tracearr 3.2.1 upstream merge
 
 Upstream `main` at `70e342584` brings 36 commits after `0d9efff12`, including

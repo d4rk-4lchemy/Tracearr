@@ -22,6 +22,8 @@ vi.mock('@/hooks/queries', () => ({
   usePlexAccounts: () => ({ data: { accounts: [], clientIdentifier: 'client-1' } }),
 }));
 
+const createServer = vi.hoisted(() => vi.fn());
+
 const apiAuth = vi.hoisted(() => ({
   connectJellyfinWithApiKey: vi.fn(),
   getPlexAccounts: vi.fn(),
@@ -30,7 +32,7 @@ const apiAuth = vi.hoisted(() => ({
   addTofaServer: vi.fn(),
 }));
 const { connectJellyfinWithApiKey, getPlexAccounts } = apiAuth;
-vi.mock('@/lib/api', () => ({ api: { auth: apiAuth } }));
+vi.mock('@/lib/api', () => ({ api: { auth: apiAuth, servers: { create: createServer } } }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/components/brand/Logo', () => ({ LogoIcon: () => null }));
 vi.mock('@/components/settings/data/Import', () => ({
@@ -87,6 +89,30 @@ describe('Setup', () => {
       apiKey: 'key-1',
     });
     expect(await screen.findByText('importers for jellyfin')).toBeInTheDocument();
+  });
+
+  it('connects Dispatcharr with credentials and the URL entered by the owner', async () => {
+    createServer.mockResolvedValue({ id: 'tv-1', type: 'dispatcharr' });
+    renderSetup('/setup?type=dispatcharr');
+    expect(screen.getByLabelText('servers.serverUrl')).toHaveValue('');
+    await userEvent.type(
+      screen.getByLabelText('servers.serverUrl'),
+      'https://tv.example.test/dispatcharr'
+    );
+    await userEvent.type(screen.getByLabelText('servers.serverName'), 'TV');
+    await userEvent.type(screen.getByLabelText('Username'), 'admin');
+    await userEvent.type(screen.getByLabelText('Password'), 'secret');
+    await userEvent.click(screen.getByRole('button', { name: 'servers.connectServer' }));
+    await waitFor(() =>
+      expect(createServer).toHaveBeenCalledWith({
+        type: 'dispatcharr',
+        name: 'TV',
+        url: 'https://tv.example.test/dispatcharr',
+        username: 'admin',
+        password: 'secret',
+        ignoreAnonymousStreams: true,
+      })
+    );
   });
 
   it('a password owner connects tofa through sign-in', async () => {

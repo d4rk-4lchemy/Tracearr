@@ -136,6 +136,12 @@ describe('AddServerDialog', () => {
   it('shows Dispatcharr authentication and anonymous controls for both modes', () => {
     const base = props({ serverType: 'dispatcharr', keyFields: false, setDispatcharr: vi.fn() });
     const { rerender } = render(<AddServerDialog {...base} />);
+    expect(screen.getByRole('button', { name: 'servers.connectServer' })).toBeEnabled();
+    expect(screen.getByLabelText('servers.serverUrl')).toHaveAttribute(
+      'placeholder',
+      'http://192.168.1.100:9191'
+    );
+    expect(screen.getByLabelText('servers.serverUrl')).toHaveValue('');
     expect(screen.getByLabelText('Username')).toBeInTheDocument();
     expect(screen.getByLabelText('Password')).toHaveAttribute('type', 'password');
     expect(screen.getByRole('checkbox', { name: 'Ignore Anonymous streams' })).toBeChecked();
@@ -146,6 +152,7 @@ describe('AddServerDialog', () => {
         form={{ ...base.form, dispatcharr: { ...emptyDispatcharrForm(), mode: 'token' } }}
       />
     );
+    expect(screen.getByRole('button', { name: 'servers.connectServer' })).toBeEnabled();
     expect(screen.getByLabelText('API Key / JWT Token')).toHaveAttribute('type', 'password');
     expect(screen.queryByLabelText('Username')).not.toBeInTheDocument();
   });

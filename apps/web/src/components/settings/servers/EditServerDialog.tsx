@@ -314,6 +314,7 @@ export function EditServerDialog({
               <FieldLabel htmlFor="edit-url">{t('servers.serverUrl')}</FieldLabel>
               <Input
                 id="edit-url"
+                placeholder="http://192.168.1.100:9191"
                 value={manualUrl}
                 onChange={(e) => setManualUrl(e.target.value)}
                 disabled={locked}

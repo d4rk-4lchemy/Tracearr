@@ -95,7 +95,7 @@ export function ConnectServerStep({
           <Button variant="ghost" onClick={onSkip} disabled={busy}>
             {t('common:actions.skip')}
           </Button>
-          {form.keyFields && <ConnectServerButton form={form} />}
+          {(form.keyFields || serverType === 'dispatcharr') && <ConnectServerButton form={form} />}
         </>
       }
     >

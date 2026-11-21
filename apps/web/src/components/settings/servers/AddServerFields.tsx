@@ -306,7 +306,7 @@ export function AddServerFields({
                 id="serverUrl"
                 value={form.serverUrl}
                 onChange={(e) => form.setServerUrl(e.target.value)}
-                placeholder="http://dispatcharr.local:9191"
+                placeholder="http://192.168.1.100:9191"
               />
             </Field>
             <Field>

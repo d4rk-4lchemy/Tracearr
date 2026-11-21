@@ -144,7 +144,9 @@ function AddServerStep({ form, onCancel }: { form: AddServerForm; onCancel: () =
         {addedWithoutStop && isOwner && (
           <Button onClick={form.continueAdded}>{t('common:actions.continue')}</Button>
         )}
-        {form.keyFields && !addedWithoutStop && <ConnectServerButton form={form} />}
+        {(form.keyFields || serverType === 'dispatcharr') && !addedWithoutStop && (
+          <ConnectServerButton form={form} />
+        )}
       </DialogFooter>
     </>
   );
