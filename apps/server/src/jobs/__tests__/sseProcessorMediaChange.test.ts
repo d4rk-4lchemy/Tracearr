@@ -180,6 +180,7 @@ vi.mock('../../services/automations/events/contextAssembly.js', () => ({
 // ============================================================================
 
 import { initializeSSEProcessor, startSSEProcessor, stopSSEProcessor } from '../sseProcessor.js';
+import { fakePlexClient } from '../../test/mediaServerFakes.js';
 import type * as SessionLifecycleModule from '../poller/sessionLifecycle.js';
 import type * as StateTrackerModule from '../poller/stateTracker.js';
 
@@ -334,7 +335,7 @@ function stubFaithfulFindActiveSession(row: { ratingKey: string | null }) {
  */
 function setupFetchFullSession(processed: Record<string, unknown> = mockProcessedSession) {
   const mockGetSessions = vi.fn().mockResolvedValue([processed]);
-  mockCreateMediaServerClient.mockReturnValue({ getSessions: mockGetSessions });
+  mockCreateMediaServerClient.mockReturnValue(fakePlexClient({ getSessions: mockGetSessions }));
 
   // Mock db.select().from(servers).where().limit() chain
   const limitFn = vi.fn().mockResolvedValue([mockServer]);
@@ -357,7 +358,7 @@ function setupServerUserQuery() {
   // getIdentityServerUserIds
   let callCount = 0;
   const mockGetSessions = vi.fn().mockResolvedValue([mockProcessedSession]);
-  mockCreateMediaServerClient.mockReturnValue({ getSessions: mockGetSessions });
+  mockCreateMediaServerClient.mockReturnValue(fakePlexClient({ getSessions: mockGetSessions }));
 
   mockDb.select.mockImplementation(() => {
     callCount++;

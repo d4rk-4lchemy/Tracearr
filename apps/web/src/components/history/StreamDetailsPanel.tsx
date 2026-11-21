@@ -10,9 +10,11 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { formatDuration } from '@/lib/dateFormat';
 import { cn } from '@/lib/utils';
 import {
   PLAYBACK_DECISION_LABEL_KEYS,
+  SERVER_PROFILES,
   formatBitrate,
   formatMediaTech,
   formatResolutionDisplay,
@@ -49,8 +51,8 @@ interface StreamDetailsPanelProps {
   serverType: ServerType;
 }
 
-// Component for showing "N/A" with tooltip when stream bitrate is unavailable (Jellyfin/Emby only)
-function UnavailableBitrate() {
+/** "N/A" with the reason on hover, for a value the server does not report. */
+function NotReported({ reason }: { reason: string }) {
   const { t } = useTranslation('pages');
   return (
     <Tooltip>
@@ -61,7 +63,7 @@ function UnavailableBitrate() {
         </span>
       </TooltipTrigger>
       <TooltipContent side="top" className="max-w-[250px]">
-        <p className="text-xs">{t('history.stream.bitrateUnavailable')}</p>
+        <p className="text-xs">{reason}</p>
       </TooltipContent>
     </Tooltip>
   );
@@ -159,7 +161,7 @@ function ComparisonRow({
   const sourceClasses = cn(sourceClassName ?? 'truncate font-medium');
   const streamClasses = cn(
     streamClassName ?? 'truncate',
-    isDifferent && 'font-medium text-amber-500'
+    isDifferent && 'text-warning font-medium'
   );
   const labelClasses = cn(
     'text-muted-foreground',
@@ -175,7 +177,7 @@ function ComparisonRow({
         <ArrowRight
           className={cn(
             'mx-auto h-3.5 w-3.5',
-            isDifferent ? 'text-amber-500' : 'text-muted-foreground/50'
+            isDifferent ? 'text-warning' : 'text-muted-foreground/50'
           )}
         />
       ) : (
@@ -212,7 +214,7 @@ function SectionColumnLabels({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        'text-muted-foreground grid grid-cols-[100px_1fr_24px_1fr] items-center gap-2 text-[10px] tracking-[0.3em] uppercase',
+        'text-muted-foreground grid grid-cols-[100px_1fr_24px_1fr] items-center gap-2 text-xs uppercase',
         className
       )}
     >
@@ -257,6 +259,9 @@ export function StreamDetailsPanel({
   // Atmos is metadata inside the core codec, so a direct play or copy keeps it
   const atmosSuffix = sourceAudioDetails?.atmos ? ' Atmos' : '';
   const hasSubtitleDetails = subtitleInfo?.codec || subtitleInfo?.language;
+  const rebufferCount = transcodeInfo?.rebufferCount;
+  const droppedFrames = transcodeInfo?.droppedFrames;
+  const hasPlaybackHealth = rebufferCount !== undefined || droppedFrames !== undefined;
   const hasTranscodeDetails =
     transcodeInfo && (transcodeInfo.hwDecoding || transcodeInfo.hwEncoding);
   const ffmpegSpeed = transcodeInfo?.speed;
@@ -275,11 +280,13 @@ export function StreamDetailsPanel({
   const transcodeReasons = transcodeInfo?.reasons ?? [];
   const videoTranscodeReasons = filterTranscodeReasons(transcodeReasons, 'video');
   const audioTranscodeReasons = filterTranscodeReasons(transcodeReasons, 'audio');
-  const showUnavailableBitrateTooltip = serverType === 'jellyfin' || serverType === 'emby';
 
   return (
     <div className="space-y-3">
-      {(transcodeInfo?.sourceContainer || bitrate || ffmpegSpeed !== undefined) && (
+      {(transcodeInfo?.sourceContainer ||
+        bitrate ||
+        hasPlaybackHealth ||
+        ffmpegSpeed !== undefined) && (
         <>
           {transcodeInfo?.sourceContainer && (
             <ComparisonRow
@@ -290,23 +297,56 @@ export function StreamDetailsPanel({
               )}
             />
           )}
-          <div className="space-y-1">
-            {!!bitrate && (
-              <div className="flex justify-between py-1 text-sm">
-                <span className="text-muted-foreground">{t('pages:history.stream.bitrate')}</span>
-                <span className="font-medium">{formatBitrate(bitrate)}</span>
-              </div>
-            )}
-            {ffmpegSpeed !== undefined && (
-              <div className="flex justify-between py-1 text-sm">
-                <span className="text-muted-foreground">{t('pages:history.stream.speed')}</span>
-                <span className={cn('font-medium', ffmpegSpeed < 1 && 'text-amber-500')}>
-                  {ffmpegSpeed.toFixed(2)}x
-                  {transcodeInfo?.throttled && ` ${t('pages:history.stream.throttled')}`}
-                </span>
-              </div>
-            )}
-          </div>
+          {(!!bitrate || hasPlaybackHealth || ffmpegSpeed !== undefined) && (
+            <div>
+              {!!bitrate && (
+                <div className="flex justify-between py-1 text-sm">
+                  <span className="text-muted-foreground">{t('pages:history.stream.bitrate')}</span>
+                  <span className="font-medium">{formatBitrate(bitrate)}</span>
+                </div>
+              )}
+              {ffmpegSpeed !== undefined && (
+                <div className="flex justify-between py-1 text-sm">
+                  <span className="text-muted-foreground">{t('pages:history.stream.speed')}</span>
+                  <span className={cn('font-medium', ffmpegSpeed < 1 && 'text-amber-500')}>
+                    {ffmpegSpeed.toFixed(2)}x
+                    {transcodeInfo?.throttled && ` ${t('pages:history.stream.throttled')}`}
+                  </span>
+                </div>
+              )}
+              {rebufferCount !== undefined && (
+                <div className="flex justify-between py-1 text-sm">
+                  <span className="text-muted-foreground">
+                    {t('pages:history.stream.rebuffers')}
+                  </span>
+                  <span className="font-medium">
+                    {ffmpegSpeed !== undefined && (
+                      <div className="flex justify-between py-1 text-sm">
+                        <span className="text-muted-foreground">
+                          {t('pages:history.stream.speed')}
+                        </span>
+                        <span className={cn('font-medium', ffmpegSpeed < 1 && 'text-amber-500')}>
+                          {ffmpegSpeed.toFixed(2)}x
+                          {transcodeInfo?.throttled && ` ${t('pages:history.stream.throttled')}`}
+                        </span>
+                      </div>
+                    )}
+                    {rebufferCount}
+                    {!!transcodeInfo?.rebufferDurationMs &&
+                      ` · ${formatDuration(transcodeInfo.rebufferDurationMs, { style: 'compact' })}`}
+                  </span>
+                </div>
+              )}
+              {droppedFrames !== undefined && (
+                <div className="flex justify-between py-1 text-sm">
+                  <span className="text-muted-foreground">
+                    {t('pages:history.stream.droppedFrames')}
+                  </span>
+                  <span className="font-medium">{droppedFrames.toLocaleString()}</span>
+                </div>
+              )}
+            </div>
+          )}
           <Separator />
         </>
       )}
@@ -348,8 +388,8 @@ export function StreamDetailsPanel({
                   // Show N/A with tooltip for Jellyfin/Emby transcodes without stream bitrate
                   videoDecision === 'transcode' &&
                   !streamVideoDetails?.bitrate &&
-                  showUnavailableBitrateTooltip ? (
-                    <UnavailableBitrate />
+                  !SERVER_PROFILES[serverType].reportsTranscodeTrackBitrates ? (
+                    <NotReported reason={t('pages:history.stream.bitrateUnavailable')} />
                   ) : (
                     formatBitrate(streamVideoDetails?.bitrate ?? sourceVideoDetails?.bitrate)
                   )
@@ -436,8 +476,8 @@ export function StreamDetailsPanel({
                 // Show N/A with tooltip for Jellyfin/Emby transcodes without stream bitrate
                 audioDecision === 'transcode' &&
                 !streamAudioDetails?.bitrate &&
-                showUnavailableBitrateTooltip ? (
-                  <UnavailableBitrate />
+                !SERVER_PROFILES[serverType].reportsTranscodeTrackBitrates ? (
+                  <NotReported reason={t('pages:history.stream.bitrateUnavailable')} />
                 ) : (
                   formatBitrate(streamAudioDetails?.bitrate ?? sourceAudioDetails?.bitrate)
                 )
@@ -532,6 +572,15 @@ export function StreamDetailsPanel({
                     {t('pages:history.stream.hwEncode')}
                   </span>
                   <span>{transcodeInfo.hwEncoding}</span>
+                </div>
+              )}
+              {transcodeInfo?.speed !== undefined && ffmpegSpeed === undefined && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">{t('pages:history.stream.speed')}</span>
+                  <span className={cn(transcodeInfo.speed < 1 && 'text-warning')}>
+                    {transcodeInfo.speed.toFixed(1)}x
+                    {transcodeInfo.throttled && ` ${t('pages:history.stream.throttled')}`}
+                  </span>
                 </div>
               )}
             </div>

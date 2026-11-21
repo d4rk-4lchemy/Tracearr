@@ -2,6 +2,7 @@ import { dispatcharrDeviceIdSql } from '../../services/mediaServer/dispatcharr/d
 import { eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { sessions, serverUsers, servers, users } from '../../db/schema.js';
+import { personNameColumn } from '../../utils/representativeAccount.js';
 import { isLocalSession, readSessionRow } from '../../db/sessions/index.js';
 
 /** One session joined to its account, identity and server, or undefined when there is none. */
@@ -19,7 +20,7 @@ export async function fetchSessionDetailRow(
         serverUserId: sessions.serverUserId,
         username: serverUsers.username,
         userThumb: serverUsers.thumbUrl,
-        identityName: users.name,
+        identityName: personNameColumn(),
         sessionKey: sessions.sessionKey,
         state: sessions.state,
         mediaType: sessions.mediaType,
@@ -51,6 +52,7 @@ export async function fetchSessionDetailRow(
         geoAsnNumber: sessions.geoAsnNumber,
         geoAsnOrganization: sessions.geoAsnOrganization,
         isLocal: sessions.isLocal,
+        profileName: sessions.profileName,
         playerName: sessions.playerName,
         deviceId: sessions.deviceId,
         dispatcharrDeviceId: dispatcharrDeviceIdSql(),
@@ -137,6 +139,7 @@ export function mapSessionDetail(row: SessionDetailRow) {
     geoAsnNumber: row.geoAsnNumber,
     geoAsnOrganization: row.geoAsnOrganization,
     isLocal: isLocalSession(row),
+    profileName: row.profileName,
     playerName: row.playerName,
     deviceId: row.deviceId,
     dispatcharrDeviceId: row.dispatcharrDeviceId,

@@ -1,7 +1,12 @@
 import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
+import { extendTailwindMerge } from 'tailwind-merge';
 import { getName as getCountryNameFromCode } from 'country-list';
-import { formatEpisodeLabel, type TranscodeInfo } from '@tracearr/shared';
+import { formatEpisodeLabel, namesShow, type TranscodeInfo } from '@tracearr/shared';
+
+// text-dense is a size step from globals.css; unregistered it would merge away as a text color.
+const twMerge = extendTailwindMerge({
+  extend: { classGroups: { 'font-size': [{ text: ['dense'] }] } },
+});
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -98,20 +103,23 @@ export function getMediaDisplay(media: MediaDisplayFields): {
       subtitle: programmeTitle && programmeTitle !== channelTitle ? programmeTitle : null,
     };
   }
-  if (media.mediaType === 'live') return { title: media.mediaTitle ?? '', subtitle: null };
 
-  if (media.mediaType === 'episode' && media.grandparentTitle) {
-    // TV Show episode
-    const episodeInfo =
-      formatEpisodeLabel(media.seasonNumber, media.episodeNumber, {
-        spaced: true,
-      }) ?? '';
+  // Jellyfin and Emby name the channel as the title when no program is known
+  const channel =
+    media.mediaType === 'live' && media.channelTitle !== media.mediaTitle
+      ? media.channelTitle
+      : null;
+  if (namesShow(media)) {
+    const episodeInfo = formatEpisodeLabel(media.seasonNumber, media.episodeNumber, {
+      spaced: true,
+    });
     return {
       title: media.grandparentTitle,
-      subtitle: episodeInfo
-        ? `${episodeInfo} · ${media.mediaTitle ?? ''}`
-        : (media.mediaTitle ?? null),
+      subtitle: [episodeInfo, media.mediaTitle, channel].filter(Boolean).join(' · ') || null,
     };
+  }
+  if (media.mediaType === 'live') {
+    return { title: media.mediaTitle ?? '', subtitle: channel ?? null };
   }
   if (media.mediaType === 'track') {
     // Music track - show track name as title, artist/album as subtitle
@@ -135,7 +143,7 @@ export function getMediaLinks(
   media: MediaDisplayFields & { mediaId?: string | null; showMediaId?: string | null }
 ): { title: string | null; subtitle: string | null } {
   const path = (id: string | null | undefined) => (id ? `/media/${id}` : null);
-  if (media.mediaType === 'episode' && media.grandparentTitle) {
+  if (namesShow(media)) {
     return { title: path(media.showMediaId), subtitle: path(media.mediaId) };
   }
   return { title: path(media.mediaId), subtitle: null };

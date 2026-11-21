@@ -1,6 +1,7 @@
 import { deviceIdentity } from '../../mediaServer/dispatcharr/deviceIdentity.js';
 import {
   BYTES_PER_GB,
+  SERVER_PROFILES,
   TIME_MS,
   isSubtitleBurnIn,
   normalizeDynamicRange,
@@ -18,7 +19,7 @@ import type {
 import { isIpInCidr, toNetworkKey, unmapIpv4Mapped } from '../../../utils/ip.js';
 import { automationsLogger } from '../../../utils/logger.js';
 import { LOCAL_NETWORK_COUNTRY, normalizeToCountryCode } from '../../../utils/country.js';
-import { isLocalSession } from '../../../db/sessions/rules.js';
+import { hasNoAddress, isLocalSession } from '../../../db/sessions/rules.js';
 import { normalizeResolution } from '../../../utils/resolutionNormalizer.js';
 import { countDownloads, sumDownloadBytes } from '../../downloads/queries.js';
 import { geoipService } from '../../geoip.js';
@@ -264,7 +265,7 @@ const evaluateConcurrentStreams: ConditionEvaluator = (
   // from another server type in a cross-server identity are the accepted
   // imprecision here (rows carry no server type).
   if (countDeviceTypes?.length) {
-    const includePlayerName = context.server.type !== 'plex';
+    const includePlayerName = SERVER_PROFILES[context.server.type].playerNameCountsTowardDevice;
     userActiveSessions = userActiveSessions.filter((s) =>
       countDeviceTypes.includes(
         normalizeDeviceType(
@@ -292,11 +293,11 @@ const evaluateConcurrentStreams: ConditionEvaluator = (
   }
 
   // When exclude_same_ip is true, only count triggering session + sessions from different IPs
-  // (IPv6 compared by /64 network key).
-  if (excludeSameIp) {
+  // (IPv6 compared by /64 network key). A session with no address never shares one.
+  if (excludeSameIp && !hasNoAddress(session)) {
     const sessionKey = toNetworkKey(session.ipAddress);
     userActiveSessions = userActiveSessions.filter(
-      (s) => s.id === session.id || toNetworkKey(s.ipAddress) !== sessionKey
+      (s) => s.id === session.id || hasNoAddress(s) || toNetworkKey(s.ipAddress) !== sessionKey
     );
   }
 
@@ -468,10 +469,11 @@ const evaluateUniqueIpsInWindow: ConditionEvaluator = (
 
   // Include the current session. Count by network key; keep original IPs for details.
   const ipsByNetwork = new Map<string, string>();
-  const addIp = (rawIp: string) => {
+  const addIp = (counted: Session) => {
+    if (hasNoAddress(counted)) return;
     // Unmap v4-mapped v6 first so isPrivateIP and toNetworkKey agree on the
     // same address (isPrivateIP only strips the dotted ::ffff: form itself).
-    const ip = unmapIpv4Mapped(rawIp);
+    const ip = unmapIpv4Mapped(counted.ipAddress);
     // LAN addresses are one household, not evidence of sharing, so they are
     // never counted. Deliberately stricter than v1, which counted them
     // unless excludePrivateIps was explicitly set; that default is what
@@ -480,9 +482,9 @@ const evaluateUniqueIpsInWindow: ConditionEvaluator = (
     const key = toNetworkKey(ip);
     ipsByNetwork.getOrInsert(key, ip);
   };
-  addIp(session.ipAddress);
+  addIp(session);
   for (const s of sessionsInWindow) {
-    addIp(s.ipAddress);
+    addIp(s);
   }
 
   return {
@@ -935,7 +937,7 @@ const evaluateDeviceType: ConditionEvaluator = (
     session.device,
     session.platform,
     session.product,
-    server.type === 'plex' ? null : session.playerName
+    SERVER_PROFILES[server.type].playerNameCountsTowardDevice ? session.playerName : null
   );
 
   return {
@@ -982,6 +984,11 @@ const evaluateIsLocalNetwork: ConditionEvaluator = (
   condition: Condition
 ): EvaluatorResult => {
   const { session } = context;
+
+  // A session with no address is neither local nor remote.
+  if (hasNoAddress(session)) {
+    return { matched: false, actual: null };
+  }
 
   const isLocal = geoipService.isPrivateIP(session.ipAddress);
 

@@ -108,6 +108,11 @@ describe('EditServerDialog', () => {
         isUpdating={false}
       />
     );
+    expect(screen.getByLabelText('servers.serverUrl')).toHaveAttribute(
+      'placeholder',
+      'http://192.168.1.100:9191'
+    );
+    expect(screen.getByLabelText('servers.serverUrl')).toHaveValue('http://jelly.local:8096');
     expect(screen.getByLabelText('API Key / JWT Token')).toHaveValue('');
     expect(screen.queryByLabelText('common:labels.apiKey')).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('combobox', { name: 'Authentication' }));

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { dispatcharrDeviceId, dispatcharrUserAgent, deviceIdentity } from '../deviceIdentity.js';
-import { buildCompositeKey } from '../../../../jobs/poller/stateTracker.js';
+import { buildCompositeKey } from '../../../../jobs/poller/sessionIdentity.js';
 
 const source = { serverId: 'server-1', serverUserId: 'account-1', dispatcharrUserAgent: 'VLC/3.0' };
 

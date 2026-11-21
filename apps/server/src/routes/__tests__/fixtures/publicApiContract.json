@@ -35,7 +35,7 @@
                     },
                     "type": {
                       "type": "string",
-                      "enum": ["plex", "jellyfin", "emby", "dispatcharr"]
+                      "enum": ["plex", "jellyfin", "emby", "tofa", "dispatcharr"]
                     },
                     "online": {
                       "type": "boolean"
@@ -1961,7 +1961,7 @@
                     },
                     "server_type": {
                       "type": "string",
-                      "enum": ["plex", "jellyfin", "emby", "dispatcharr"]
+                      "enum": ["plex", "jellyfin", "emby", "tofa", "dispatcharr"]
                     },
                     "state": {
                       "type": "string",
@@ -2483,7 +2483,7 @@
                     },
                     "server_type": {
                       "type": "string",
-                      "enum": ["plex", "jellyfin", "emby", "dispatcharr"]
+                      "enum": ["plex", "jellyfin", "emby", "tofa", "dispatcharr"]
                     },
                     "username": {
                       "type": "string"
@@ -3133,7 +3133,7 @@
                         },
                         "type": {
                           "type": "string",
-                          "enum": ["plex", "jellyfin", "emby", "dispatcharr"]
+                          "enum": ["plex", "jellyfin", "emby", "tofa", "dispatcharr"]
                         }
                       },
                       "required": ["id", "name", "type"]
@@ -3269,7 +3269,7 @@
                       },
                       "type": {
                         "type": "string",
-                        "enum": ["plex", "jellyfin", "emby", "dispatcharr"]
+                        "enum": ["plex", "jellyfin", "emby", "tofa", "dispatcharr"]
                       }
                     },
                     "required": ["id", "name", "type"]
@@ -3399,7 +3399,7 @@
                     },
                     "server_type": {
                       "type": "string",
-                      "enum": ["plex", "jellyfin", "emby", "dispatcharr"]
+                      "enum": ["plex", "jellyfin", "emby", "tofa", "dispatcharr"]
                     },
                     "historical": {
                       "type": "boolean"
@@ -3503,7 +3503,7 @@
                           },
                           "server_type": {
                             "type": "string",
-                            "enum": ["plex", "jellyfin", "emby", "dispatcharr"]
+                            "enum": ["plex", "jellyfin", "emby", "tofa", "dispatcharr"]
                           },
                           "username": {
                             "type": "string"
@@ -3957,7 +3957,7 @@
                           },
                           "server_type": {
                             "type": "string",
-                            "enum": ["plex", "jellyfin", "emby", "dispatcharr"]
+                            "enum": ["plex", "jellyfin", "emby", "tofa", "dispatcharr"]
                           },
                           "username": {
                             "type": "string"
@@ -4462,7 +4462,7 @@
                               },
                               "server_type": {
                                 "type": "string",
-                                "enum": ["plex", "jellyfin", "emby", "dispatcharr"]
+                                "enum": ["plex", "jellyfin", "emby", "tofa", "dispatcharr"]
                               },
                               "username": {
                                 "type": "string"
@@ -4955,7 +4955,7 @@
                               },
                               "type": {
                                 "type": "string",
-                                "enum": ["plex", "jellyfin", "emby", "dispatcharr"]
+                                "enum": ["plex", "jellyfin", "emby", "tofa", "dispatcharr"]
                               }
                             },
                             "required": ["id", "name", "type"]
@@ -5130,7 +5130,7 @@
                     },
                     "server_type": {
                       "type": "string",
-                      "enum": ["plex", "jellyfin", "emby", "dispatcharr"]
+                      "enum": ["plex", "jellyfin", "emby", "tofa", "dispatcharr"]
                     },
                     "library_id": {
                       "type": "string"
@@ -5679,7 +5679,7 @@
                     },
                     "server_type": {
                       "type": "string",
-                      "enum": ["plex", "jellyfin", "emby", "dispatcharr"]
+                      "enum": ["plex", "jellyfin", "emby", "tofa", "dispatcharr"]
                     },
                     "state": {
                       "type": "string",
@@ -6228,7 +6228,7 @@
                           },
                           "server_type": {
                             "type": "string",
-                            "enum": ["plex", "jellyfin", "emby", "dispatcharr"]
+                            "enum": ["plex", "jellyfin", "emby", "tofa", "dispatcharr"]
                           },
                           "server_user_id": {
                             "type": "string",
@@ -6334,7 +6334,7 @@
                     },
                     "server_type": {
                       "type": "string",
-                      "enum": ["plex", "jellyfin", "emby", "dispatcharr"]
+                      "enum": ["plex", "jellyfin", "emby", "tofa", "dispatcharr"]
                     },
                     "server_user_id": {
                       "type": "string",
@@ -6505,7 +6505,7 @@
                     },
                     "server_type": {
                       "type": "string",
-                      "enum": ["plex", "jellyfin", "emby", "dispatcharr"]
+                      "enum": ["plex", "jellyfin", "emby", "tofa", "dispatcharr"]
                     },
                     "state": {
                       "type": "string",
@@ -7055,7 +7055,7 @@
                     },
                     "server_type": {
                       "type": "string",
-                      "enum": ["plex", "jellyfin", "emby", "dispatcharr"]
+                      "enum": ["plex", "jellyfin", "emby", "tofa", "dispatcharr"]
                     },
                     "library_id": {
                       "type": "string"
@@ -7169,7 +7169,7 @@
                     },
                     "server_type": {
                       "type": "string",
-                      "enum": ["plex", "jellyfin", "emby", "dispatcharr"]
+                      "enum": ["plex", "jellyfin", "emby", "tofa", "dispatcharr"]
                     },
                     "library_id": {
                       "type": "string"

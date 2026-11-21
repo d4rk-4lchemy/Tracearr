@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setTimeFormat } from '@/lib/dateFormat';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
@@ -21,19 +21,15 @@ vi.mock('react-i18next', () => ({
     },
   }),
 }));
-
-vi.mock('@/hooks/useAuth', () => ({
-  useAuth: () => ({ user: { role: 'member' } }),
-}));
-
+const auth = vi.hoisted(() => ({ role: 'member' }));
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: auth }) }));
 vi.mock('@/hooks/useServer', () => ({
   useServer: () => ({
     isMultiServer: false,
-    selectedServers: [{ id: 'server-1', color: null }],
-    selectedServerIds: ['server-1'],
-    selectedServerId: 'server-1',
+    servers: [{ id: 'server-2', canStopStreams: false }],
   }),
 }));
+vi.mock('@/hooks/useServerColorMap', () => ({ useServerColorMap: () => new Map() }));
 
 vi.mock('@/hooks/useEstimatedProgress', () => ({
   useEstimatedProgress: (session: ActiveSession) => ({
@@ -51,6 +47,7 @@ vi.mock('./TerminateSessionDialog', () => ({
 
 function makeSession(overrides: Partial<ActiveSession> = {}): ActiveSession {
   return {
+    profileName: null,
     id: 'session-1',
     serverId: 'server-1',
     serverUserId: 'user-1',
@@ -143,8 +140,8 @@ function makeSession(overrides: Partial<ActiveSession> = {}): ActiveSession {
 function getProgressTranslatePercent(container: HTMLElement): number | null {
   const indicator = container.querySelector<HTMLElement>('[style*="translateX"]');
   const transform = indicator?.style.transform ?? '';
-  const match = transform.match(/translateX\(-([0-9.]+)%\)/);
-  return match?.[1] ? Number(match[1]) : null;
+  const match = transform.match(/translateX\((-?[0-9.]+)%\)/);
+  return match?.[1] ? Math.abs(Number(match[1])) : null;
 }
 
 describe('NowPlayingCard ffmpeg speed display', () => {
@@ -481,7 +478,7 @@ describe('NowPlayingCard ffmpeg speed display', () => {
     expect(screen.queryByText(/2\.54x/)).toBeNull();
   });
 
-  it('keeps default duration fallback for non-dispatcharr streams', () => {
+  it('uses the Live TV label for Plex streams without adding Dispatcharr speed', () => {
     render(
       <NowPlayingCard
         session={makeSession({
@@ -493,7 +490,7 @@ describe('NowPlayingCard ffmpeg speed display', () => {
     );
 
     expect(screen.queryByText('1.25x')).toBeNull();
-    expect(screen.getAllByText('--:--')).toHaveLength(2);
+    expect(screen.getByText('media.liveTV')).toBeInTheDocument();
   });
 
   it.each(['movie', 'episode', 'live', 'track'] as const)(
@@ -651,6 +648,18 @@ describe('NowPlayingCard device icon', () => {
   it('carries no hover text when the session reports no device at all', () => {
     expect(renderCard({})).not.toHaveAttribute('title');
   });
+
+  it.each([
+    ['an iPad', { platform: 'iOS', device: 'iPad Pro' }, 'lucide-tablet'],
+    ['an Android TV', { platform: 'Android TV', device: 'BRAVIA 4K' }, 'lucide-tv'],
+    ['an NVIDIA Shield', { platform: 'Android TV', device: 'SHIELD Android TV' }, 'lucide-tv'],
+    ['an iPhone', { platform: 'iOS', device: 'iPhone 15' }, 'lucide-smartphone'],
+    ['an Android phone', { platform: 'Android', device: 'Pixel 8' }, 'lucide-smartphone'],
+    ['a browser', { platform: 'Chrome', device: 'Chrome' }, 'lucide-monitor'],
+  ])('draws %s with the matching icon', (_name, session, icon) => {
+    const svg = renderCard(session).querySelector('svg');
+    expect(svg).toHaveClass(icon);
+  });
 });
 
 describe('NowPlayingCard transcoder bar and buffering', () => {
@@ -711,5 +720,41 @@ describe('NowPlayingCard title links', () => {
 
     fireEvent.click(screen.getByText('alice'));
     expect(onClick).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('NowPlayingCard stop button', () => {
+  beforeEach(() => {
+    auth.role = 'owner';
+  });
+  afterEach(() => {
+    auth.role = 'member';
+  });
+
+  it('holds the stop with the reason when the server key cannot stop streams', () => {
+    renderCard({
+      canTerminate: true,
+      serverId: 'server-2',
+      server: { id: 'server-2', name: 'Den', type: 'tofa' },
+    });
+    expect(
+      screen.getByRole('button', { name: 'settings:servers.cannotStopStreams' })
+    ).toBeDisabled();
+    expect(screen.queryByTitle('pages:terminateStream.title')).not.toBeInTheDocument();
+  });
+
+  it('offers the stop for live TV on tofa', () => {
+    renderCard({
+      canTerminate: true,
+      mediaType: 'live',
+      serverId: 'server-3',
+      server: { id: 'server-3', name: 'Attic', type: 'tofa' },
+    });
+    expect(screen.getByTitle('pages:terminateStream.title')).toBeEnabled();
+  });
+
+  it('offers the stop for live TV on Plex', () => {
+    renderCard({ canTerminate: true, mediaType: 'live' });
+    expect(screen.getByTitle('pages:terminateStream.title')).toBeEnabled();
   });
 });

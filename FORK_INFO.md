@@ -1,5 +1,103 @@
 # Tracearr Fork Information
 
+## November 21, 2026 — PR #22 main reconciliation
+
+GitHub PR #22 (`2045ca022`) is approved and merged into GitHub main as
+`d79f1357c`; local main and origin/main are fast-forwarded to that commit.
+Develop retains the 3.2 form split: the Dispatcharr URL example is ported to
+AddServerFields and the dedicated Dispatcharr edit input as
+`http://192.168.1.100:9191`. It remains only a placeholder; arbitrary entered
+URLs and saved values are preserved. Jellyfin/Emby/Plex examples are unchanged.
+
+The reconciliation also fixes a 3.2 regression: holdsApiKey intentionally
+excludes Dispatcharr, so using form.keyFields alone to render Connect hid the
+button in both Add Server and first-run setup. Both surfaces now include the
+Dispatcharr credentials/token form. Regression coverage verifies the button
+in both auth modes and first-run credentials connecting to a different HTTPS
+URL with a base path, alongside placeholder and saved-value assertions.
+The develop merge commit stays local at the user's request.
+
+Scoped validation passes with verified Node 26.13.1 / pnpm 12.20.0: all
+2,747 web tests, 59 focused settings/setup tests, full typecheck, lint and
+Prettier for the seven changed source/test files. Heavy jobs run sequentially
+on the 8 GB host with a 4 GB heap, two Vitest workers and Turbo concurrency
+one. Lint retains the same 190 normalized warnings and zero errors. Both
+missing-button cases are reproduced before the fix. Logs:
+`.tmp/pr22-<job>-20261121.log`; results: `.tmp/pr22-results.json`.
+Server test groups, coverage, builds, Docker jobs and live-provider manual
+smoke are not rerun for this frontend reconciliation; the preceding full-merge
+validation remains recorded separately.
+
+## November 21, 2026 — Tracearr 3.2.1 upstream merge
+
+Upstream `main` at `70e342584` brings 36 commits after `0d9efff12`, including
+3.2.0/3.2.1 and Tofa Alpha: cloud sign-in, sessions, catalog/revision sync,
+imports, requests, downloads, account pictures and owner-account linking.
+SSO-only login and local OIDC sign-out, Jellyfin transcode decisions,
+dependency updates and refreshed artwork/translations are retained.
+Upstream migrations `0126`–`0132`, snapshots and journal remain byte-for-byte
+aligned with source; the separate Dispatcharr migration ledger is unchanged.
+
+Dispatcharr is ported onto shared SERVER_TYPES/SERVER_PROFILES and the required
+client interface. It keeps composite connection keys, independent stable device
+identity, credentials/token auth, anonymous filtering, leader-owned realtime
+and REST fallback, fixed kill cooldowns, pending/Catch-up lifecycle and exact
+termination. Session identity helpers move to `poller/sessionIdentity.ts`,
+including the Catch-up termination key. Dispatcharr remains excluded from
+catalog work, imports, requests, member sign-in and owner-account linking.
+Adding it syncs users and starts realtime without marking or queuing a first
+catalog sync. DISPATCHARR_ERROR retains EXT_005; Tofa uses EXT_006 in this fork.
+
+The shared useAddServer/AddServerFields flow carries both Dispatcharr auth
+modes. EditServerDialog retains URL/auth/anonymous/location edits and separates
+them from generic API keys. ServerRow owns the dedicated Dispatcharr Metrics
+setup/update dialog; plugin checks retain their two provider families. The new
+image-origin/request helper retains header-free Dispatcharr logos and approved
+TMDB posters, redirect rejection, complete inside poster resizing, shared cache
+keys, startup/browser markers and bounded Dashboard artwork. Catch-up keeps
+programme progress beside upstream's full Live TV bar. Dashboard TV metrics,
+library-only query scopes and fork/upstream/recommended versions remain intact.
+
+All 300 fork-only localized entries survive unchanged. Exactly PR-only CI and
+the unchanged four-native-build dual-registry release workflow remain; upstream
+release/insiders/Renovate workflows and Helm changes stay excluded. CI's E2E
+Redis pin is updated; integration stays a separate manual job. Both Dockerfiles
+retain fork metadata/migrations and builder basemap fetch/prefetch while adopting
+current Node 26 image/Tailscale pins and pnpm 12.20.0. Agent/merge instructions
+use the matching toolchain; verified local runtime is Node 26.13.1.
+Preservation audit: `.tmp/merge-321-preservation-audit.json`.
+
+Full non-Docker CI-equivalent validation passes with Node 26.13.1 /
+pnpm 12.20.0, a frozen-lockfile install, cleared Turbo cache and a 4 GB heap.
+Heavy jobs run sequentially under the documented 8 GB host budget, with at
+most two Vitest workers and Turbo concurrency one; GitHub parallelism is
+unchanged. Lint, typecheck, translations, all five server groups, web, coverage
+and build pass. The five server groups plus web pass 11,752 tests without
+skips (unit 2,644; services 4,722; routes 1,483; auth 51; security 106;
+web 2,746). Shared adds 503 passes. Coverage passes 7,300 tests and every
+threshold: 74.55% statements, 67.80% branches, 75.84% functions, 76.27% lines.
+All 29 locales are in sync. All 633 changed supported non-Crowdin source,
+JSON/CSS/YAML files pass Prettier. Final full lint/typecheck pass after build.
+Lint has 190 warnings and zero errors, down 14 with no new normalized
+messages; delta: `.tmp/merge-321-lint-warning-delta.json`. Known listener,
+Vite native-config, large web chunk and Vitest advisory classes remain.
+
+Initial services failures concern the queue DB mock shape and Tofa poll-call
+arguments; complete reruns pass after reconciliation. Initial web catches the
+fifth first-run choice, the new generic Live TV label, a Dispatcharr placeholder
+and jsdom's normalized zero transform. The Catch-up rollover keeps its exact
+progress assertions. Focused UI checks pass 106 tests, including the dedicated
+Dispatcharr Metrics setup/update dialog. The strict fork API contract passes
+without regeneration or comparator changes. Successful logs use
+`.tmp/merge-321-<job>-20261121.log`; initial failed runs are kept separately.
+Results: `.tmp/merge-321-results.json`; finishing checks:
+`.tmp/merge-321-static-runner-20261121.log`.
+
+Docker integration/E2E are omitted at the user's request. Docker image builds,
+database upgrade execution and live-provider manual smoke are not performed;
+new SQL/migrations, Tofa cloud/provider flows and actual Redis/network behavior
+remain unverified against running services/providers/images.
+
 ## November 10, 2026 — Tracearr 3.1.7 upstream merge
 
 Upstream `main` at `0d9efff12` brings 61 commits after `f71256768`, including
@@ -731,9 +829,9 @@ pushed or release created in this validation.
 - Fork working tree: `/home/dev/work/Tracearr`
 - Fork branch: `develop`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `0d9efff12`
-- Last shared upstream commit found during inspection: `f71256768` (before merge)
-- Latest upstream commit merged into the current working tree: `0d9efff12`
+- Source branch/SHA inspected: `main` at `70e342584`
+- Last shared upstream commit found during inspection: `0d9efff12` (before merge)
+- Latest upstream commit merged into the current working tree: `70e342584`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:

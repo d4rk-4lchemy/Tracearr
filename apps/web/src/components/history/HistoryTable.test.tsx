@@ -34,6 +34,7 @@ vi.mock('@/hooks/useServerColorMap', () => ({
 
 function makeSession(overrides: Partial<SessionWithDetails> = {}): SessionWithDetails {
   return {
+    profileName: null,
     id: 'session-1',
     serverId: 'server-1',
     serverUserId: 'user-1',
@@ -375,6 +376,7 @@ function renderTable(
   sort?: Pick<ComponentProps<typeof HistoryTable>, 'sortBy' | 'sortDir' | 'onSortChange'>
 ) {
   const session = {
+    profileName: null,
     id: 'session-1',
     serverId: 'server-1',
     serverUserId: 'su-1',

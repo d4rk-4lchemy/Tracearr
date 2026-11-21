@@ -5,6 +5,7 @@ import { startPeriodic, type PeriodicTimers } from '../utils/periodic.js';
 import { sseManager } from '../services/sseManager.js';
 import { getSettings } from '../services/settings.js';
 import { liveServers } from '../services/liveServers.js';
+import { isJellyfinEmby } from '../services/mediaServer/index.js';
 import { dispatchPluginUpdate } from '../services/automations/events/producers.js';
 
 const DEFAULT_MANIFEST_URL =
@@ -14,7 +15,8 @@ const INITIAL_DELAY_MS = 15_000;
 const RELEASES_URL = 'https://github.com/Tracearr/Media-Server-SSE/releases/latest';
 const DISPATCHARR_RELEASE_API_URL =
   'https://api.github.com/repos/d4rk-4lchemy/Tracearr-SSE-Metrics/releases/latest';
-const DISPATCHARR_RELEASES_URL = 'https://github.com/d4rk-4lchemy/Tracearr-SSE-Metrics/releases/latest';
+const DISPATCHARR_RELEASES_URL =
+  'https://github.com/d4rk-4lchemy/Tracearr-SSE-Metrics/releases/latest';
 
 interface ManifestEntry {
   versions?: { version?: string }[];
@@ -73,7 +75,10 @@ export async function runPluginUpdateCheck(): Promise<void> {
         console.warn('[PluginUpdate] No parseable versions in SSE manifest, skipping SSE check');
       }
     } else {
-      console.warn('[PluginUpdate] SSE manifest fetch failed, skipping SSE check:', manifestResult.reason);
+      console.warn(
+        '[PluginUpdate] SSE manifest fetch failed, skipping SSE check:',
+        manifestResult.reason
+      );
     }
 
     if (dispatcharrResult.status === 'fulfilled') {
@@ -105,7 +110,7 @@ export async function runPluginUpdateCheck(): Promise<void> {
 
     const allServers = await liveServers();
     for (const server of allServers) {
-      if (server.type === 'plex') continue;
+      if (!isJellyfinEmby(server.type) && server.type !== 'dispatcharr') continue;
       if (sseManager.isInFallback(server.id)) continue;
 
       const family: PluginFamily =
@@ -117,8 +122,7 @@ export async function runPluginUpdateCheck(): Promise<void> {
       // A Dispatcharr plugin without a reported version is not enough evidence
       // to claim that an update exists. Its version announcement can arrive
       // shortly after the realtime connection is established.
-      const outdated =
-        installed !== null && compareVersions(installed, target.latest) < 0;
+      const outdated = installed !== null && compareVersions(installed, target.latest) < 0;
       const nudgeKey = `${family}:${target.latest}`;
       if (!outdated) {
         nudgedVersions.delete(server.id);

@@ -12,6 +12,7 @@ import {
   OpenApiGeneratorV3,
 } from '@asteasolutions/zod-to-openapi';
 import { z } from 'zod';
+import { SERVER_TYPES } from '@tracearr/shared';
 
 extendZodWithOpenApi(z);
 
@@ -136,9 +137,8 @@ const PLAY_SEMANTICS =
   '(COALESCE(duration_ms, 0) >= 120000 OR watched), including a chain that crosses UTC ' +
   'midnight. Rating keys the media server never provided are returned as null.';
 
-const ServerTypeEnum = z.enum(['plex', 'jellyfin', 'emby', 'dispatcharr']);
-// Responses can carry 'trailer' (sessions store it); the history filter
-// deliberately accepts only the six primary types.
+const ServerTypeEnum = z.enum(SERVER_TYPES);
+// Responses may also carry trailer.
 const MediaTypeEnum = z.enum(['movie', 'episode', 'track', 'live', 'photo', 'trailer', 'unknown']);
 const TranscodeDecisionEnum = z.enum(['directplay', 'copy', 'transcode']);
 const ActiveStateEnum = z.enum(['playing', 'paused']).openapi({
@@ -456,7 +456,7 @@ const ActiveStream = z
     server_name: z.string(),
     server_type: ServerTypeEnum,
     username: z.string().openapi({
-      description: "Identity display name when linked, else the server account's username",
+      description: 'The Tracearr display name, else the Tracearr username',
     }),
     user_thumb: z.string().nullable().openapi({ description: 'Avatar as the server reports it' }),
     user_avatar_url: z.string().nullable().openapi({ description: 'Proxied avatar URL' }),
@@ -588,7 +588,7 @@ const ViolationUser = z
       .openapi({ description: 'Tracearr identity id, the same id /users and /history use' }),
     server_user_id: z.uuid().openapi({ description: "Tracearr's id for the per-server account" }),
     username: z.string().openapi({
-      description: 'The identity display name when it has one, else the account name on the server',
+      description: 'The Tracearr display name, else the Tracearr username',
     }),
     thumb_url: z.string().nullable().openapi({ description: 'Avatar as the server reports it' }),
     avatar_url: z.string().nullable().openapi({ description: 'Proxied avatar URL' }),
