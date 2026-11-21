@@ -248,7 +248,11 @@ export function AddServerDialog({
                 <FieldLabel htmlFor="serverUrl">{t('servers.serverUrl')}</FieldLabel>
                 <Input
                   id="serverUrl"
-                  placeholder={t('servers.serverUrlPlaceholder')}
+                  placeholder={
+                    serverType === 'dispatcharr'
+                      ? 'http://192.168.1.100:9191'
+                      : t('servers.serverUrlPlaceholder')
+                  }
                   value={serverUrl}
                   onChange={(e) => onServerUrlChange(e.target.value)}
                 />
